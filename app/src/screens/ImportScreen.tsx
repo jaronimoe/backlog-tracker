@@ -6,11 +6,12 @@ import {
   dismissImport,
   QueueItem,
   useImportState,
-} from "../services/csvImport";
+} from "../services/importQueue";
 
 const STATUS_ICON: Record<QueueItem["status"], string> = {
   pending: "⏳",
   added: "✓",
+  merged: "🔗",
   duplicate: "⏭",
   invalid: "⚠",
 };
@@ -18,6 +19,7 @@ const STATUS_ICON: Record<QueueItem["status"], string> = {
 const STATUS_COLOR: Record<QueueItem["status"], string> = {
   pending: C.textMuted,
   added: C.progressFill,
+  merged: C.gold,
   duplicate: C.textMuted,
   invalid: C.accent,
 };
@@ -36,7 +38,7 @@ export default function ImportScreen() {
         {st.running && <ActivityIndicator color={C.accent} />}
       </View>
       <Text style={{ color: C.textSecondary, fontSize: 12, marginBottom: 12 }}>
-        {st.fileName ?? "CSV import"}
+        {st.label ?? "Import"}
       </Text>
 
       {st.error ? (
@@ -47,8 +49,8 @@ export default function ImportScreen() {
         <>
           <ProgressBar percent={percent} width="100%" />
           <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 6, marginBottom: 12 }}>
-            {st.processed}/{total} processed — {st.added} added,{" "}
-            {st.skippedDuplicates} duplicates, {st.skippedInvalid} invalid
+            {st.processed}/{total} processed — {st.added} added, {st.merged}{" "}
+            merged, {st.skippedDuplicates} duplicates, {st.skippedInvalid} invalid
             {!st.running && total > 0 ? "  ·  done, tab closes shortly" : ""}
           </Text>
         </>

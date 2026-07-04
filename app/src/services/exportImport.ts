@@ -6,6 +6,7 @@ import { db } from "../db/database";
 const TABLES = [
   "settings",
   "games",
+  "game_external_ids",
   "tags",
   "milestones",
   "sessions",

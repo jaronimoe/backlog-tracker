@@ -1,17 +1,16 @@
-import { useSyncExternalStore } from "react";
 import * as FileSystem from "expo-file-system/legacy";
 import * as DocumentPicker from "expo-document-picker";
 import { db } from "../db/database";
 import { addGame, addNote, setOnHold } from "../db/repo";
+import { normalizeTitle } from "../logic/normalize";
+import { RowResult, startImport } from "./importQueue";
 
 /**
  * Bulk-add games from a CSV with the header:
  *   title,original_entry,platform,year_started,year_completed,status,hours,notes
  *
- * The import runs non-blocking: rows are processed in small chunks on the JS
- * thread with a yield between chunks, so the UI stays responsive. Progress is
- * published through a tiny observable store (useImportState) that also drives
- * a temporary "Import" tab while an import is active.
+ * Runs on the shared non-blocking import queue (see importQueue.ts).
+ * Duplicates are detected via normalized titles, so re-runs are safe.
  */
 
 // ---------- tiny quote-aware CSV parser ----------
@@ -54,63 +53,6 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-// ---------- import queue store ----------
-
-export type QueueItemStatus = "pending" | "added" | "duplicate" | "invalid";
-
-export interface QueueItem {
-  title: string;
-  status: QueueItemStatus;
-  detail?: string; // e.g. "completed 2019", "on hold"
-}
-
-export interface ImportState {
-  active: boolean; // Import tab visible
-  running: boolean; // rows still being processed
-  fileName: string | null;
-  items: QueueItem[];
-  processed: number;
-  added: number;
-  skippedDuplicates: number;
-  skippedInvalid: number;
-  error: string | null;
-}
-
-const IDLE: ImportState = {
-  active: false,
-  running: false,
-  fileName: null,
-  items: [],
-  processed: 0,
-  added: 0,
-  skippedDuplicates: 0,
-  skippedInvalid: 0,
-  error: null,
-};
-
-let state: ImportState = IDLE;
-const listeners = new Set<() => void>();
-
-function setState(patch: Partial<ImportState>) {
-  state = { ...state, ...patch };
-  listeners.forEach((l) => l());
-}
-
-export function useImportState(): ImportState {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    () => state
-  );
-}
-
-export function dismissImport() {
-  if (!state.running) state = IDLE;
-  listeners.forEach((l) => l());
-}
-
 // ---------- row mapping ----------
 
 function parseHours(raw: string): number {
@@ -140,14 +82,15 @@ function importRow(
   cells: string[],
   cols: Cols,
   existing: Set<string>
-): { status: QueueItemStatus; detail?: string } {
+): RowResult {
   const get = (i: number) => (i >= 0 && i < cells.length ? cells[i].trim() : "");
 
   const title = get(cols.title);
   if (!title) return { status: "invalid", detail: "missing title" };
-  if (existing.has(title.toLowerCase()))
+  const norm = normalizeTitle(title);
+  if (existing.has(norm))
     return { status: "duplicate", detail: "already in library" };
-  existing.add(title.toLowerCase());
+  existing.add(norm);
 
   const platform = get(cols.platform);
   const status = get(cols.status).toLowerCase();
@@ -202,24 +145,10 @@ function importRow(
   return { status: "added", detail };
 }
 
-// ---------- non-blocking runner ----------
+// ---------- entry points ----------
 
-const CHUNK_SIZE = 15;
-const DISMISS_AFTER_MS = 6000;
-
-const yieldToUI = () => new Promise<void>((r) => setTimeout(r, 0));
-
-/**
- * Parse the CSV, publish the queue, then process rows chunk-by-chunk,
- * yielding to the UI between chunks. Each chunk commits its own transaction;
- * duplicates are skipped, so a crashed/killed import can simply be re-run.
- *
- * Validation errors (bad header, empty file) throw synchronously; errors
- * during the background run are published to the store instead.
- */
+/** Validate + queue a CSV import. Throws synchronously on bad input. */
 export function startCsvImport(text: string, fileName: string | null) {
-  if (state.running) throw new Error("An import is already running");
-
   const rows = parseCsv(text);
   if (rows.length < 2) throw new Error("CSV has no data rows");
   const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -243,65 +172,17 @@ export function startCsvImport(text: string, fileName: string | null) {
       : r
   );
 
-  const items: QueueItem[] = dataRows.map((r) => ({
-    title: r[cols.title]?.trim() || "(missing title)",
-    status: "pending",
-  }));
+  const existing = new Set(
+    db
+      .getAllSync<{ t: string }>("SELECT title t FROM games")
+      .map((r) => normalizeTitle(r.t))
+  );
 
-  state = {
-    ...IDLE,
-    active: true,
-    running: true,
-    fileName,
-    items,
-  };
-  listeners.forEach((l) => l());
-
-  void run(dataRows, cols); // fire and forget; errors land in the store
-}
-
-async function run(dataRows: string[][], cols: Cols) {
-  try {
-    await yieldToUI(); // let the Import tab appear before work starts
-
-    const existing = new Set(
-      db.getAllSync<{ t: string }>("SELECT lower(title) t FROM games").map((r) => r.t)
-    );
-
-    for (let i = 0; i < dataRows.length; i += CHUNK_SIZE) {
-      const end = Math.min(i + CHUNK_SIZE, dataRows.length);
-      const nextItems = [...state.items];
-      let { added, skippedDuplicates, skippedInvalid } = state;
-
-      db.withTransactionSync(() => {
-        for (let j = i; j < end; j++) {
-          const r = importRow(dataRows[j], cols, existing);
-          nextItems[j] = { ...nextItems[j], status: r.status, detail: r.detail };
-          if (r.status === "added") added++;
-          else if (r.status === "duplicate") skippedDuplicates++;
-          else skippedInvalid++;
-        }
-      });
-
-      setState({
-        items: nextItems,
-        processed: end,
-        added,
-        skippedDuplicates,
-        skippedInvalid,
-      });
-      await yieldToUI();
-    }
-
-    setState({ running: false });
-
-    // tab vanishes a few seconds after completion
-    setTimeout(() => {
-      if (!state.running) dismissImport();
-    }, DISMISS_AFTER_MS);
-  } catch (e) {
-    setState({ running: false, error: String(e) });
-  }
+  startImport(
+    fileName ?? "CSV import",
+    dataRows.map((r) => r[cols.title]?.trim() || "(missing title)"),
+    (i) => importRow(dataRows[i], cols, existing)
+  );
 }
 
 /** Pick a CSV file and start a non-blocking import. Returns false on cancel. */
@@ -312,7 +193,6 @@ export async function pickAndStartCsvImport(): Promise<boolean> {
   });
   if (res.canceled || !res.assets?.[0]) return false;
   const raw = await FileSystem.readAsStringAsync(res.assets[0].uri);
-  // fire and forget — progress is visible on the Import tab
-  void startCsvImport(raw, res.assets[0].name ?? null);
+  startCsvImport(raw, res.assets[0].name ?? null);
   return true;
 }

@@ -7,6 +7,7 @@ import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
 import { pickAndImport, shareExport } from "../services/exportImport";
 import { useNavigation } from "@react-navigation/native";
 import { pickAndStartCsvImport } from "../services/csvImport";
+import { startSteamImport } from "../services/steam";
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -16,6 +17,9 @@ export default function SettingsScreen() {
   const [threshold, setThreshold] = useState(getSetting(SETTINGS.genreBlockThreshold, "1"));
   const [igdbId, setIgdbId] = useState(getSetting(SETTINGS.igdbClientId, ""));
   const [igdbSecret, setIgdbSecret] = useState(getSetting(SETTINGS.igdbClientSecret, ""));
+  const [steamKey, setSteamKey] = useState(getSetting(SETTINGS.steamApiKey, ""));
+  const [steamId, setSteamId] = useState(getSetting(SETTINGS.steamId, ""));
+  const [steamBusy, setSteamBusy] = useState(false);
 
   const [verifying, setVerifying] = useState(false);
 
@@ -100,6 +104,40 @@ export default function SettingsScreen() {
               if (n >= 0) Alert.alert("Imported", `${n} games restored.`);
             } catch (e) {
               Alert.alert("Import failed", String(e));
+            }
+          }}
+        />
+      </View>
+
+      <Text style={h.title}>Steam library</Text>
+      <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+        Imports your owned games with playtime. Needs your Web API key
+        (steamcommunity.com/dev/apikey) and SteamID64; the profile's "Game
+        details" must be Public. Games matching existing entries are merged and
+        flagged with a source:steam tag; never-played games get status:unplayed.
+        Safe to re-run — already-linked games are skipped.
+      </Text>
+      <Field label="Steam Web API key">
+        <Input value={steamKey} onChangeText={setSteamKey} autoCapitalize="none" secureTextEntry />
+      </Field>
+      <Field label="SteamID64 (17 digits — steamid.io helps)">
+        <Input value={steamId} onChangeText={setSteamId} keyboardType="numeric" />
+      </Field>
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+        <Btn
+          label={steamBusy ? "Fetching library…" : "Import Steam library"}
+          kind="secondary"
+          onPress={async () => {
+            setSetting(SETTINGS.steamApiKey, steamKey.trim());
+            setSetting(SETTINGS.steamId, steamId.trim());
+            setSteamBusy(true);
+            try {
+              await startSteamImport();
+              setTimeout(() => navigation.navigate("Import"), 150);
+            } catch (e: any) {
+              Alert.alert("Steam import failed", String(e?.message ?? e));
+            } finally {
+              setSteamBusy(false);
             }
           }}
         />

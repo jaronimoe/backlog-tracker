@@ -12,7 +12,7 @@ import StatsScreen from "./src/screens/StatsScreen";
 import MindScreen from "./src/screens/MindScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import ImportScreen from "./src/screens/ImportScreen";
-import { useImportState } from "./src/services/csvImport";
+import { useImportState } from "./src/services/importQueue";
 import GameDetailScreen from "./src/screens/GameDetailScreen";
 import AddGameScreen from "./src/screens/AddGameScreen";
 

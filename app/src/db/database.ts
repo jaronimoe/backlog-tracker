@@ -74,6 +74,17 @@ const MIGRATIONS: string[][] = [
     `CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)`,
     `CREATE INDEX IF NOT EXISTS idx_tags_game ON tags(game_id)`,
   ],
+  // v2 — external ids for storefront imports (steam appid, gog id, …)
+  [
+    `CREATE TABLE IF NOT EXISTS game_external_ids (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      UNIQUE(source, external_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_external_game ON game_external_ids(game_id)`,
+  ],
 ];
 
 export function migrate() {
@@ -118,4 +129,6 @@ export const SETTINGS = {
   genreBlockThreshold: "genre_block_threshold", // default 1
   igdbClientId: "igdb_client_id",
   igdbClientSecret: "igdb_client_secret",
+  steamApiKey: "steam_api_key",
+  steamId: "steam_id", // SteamID64
 };

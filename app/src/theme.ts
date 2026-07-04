@@ -19,4 +19,6 @@ export const C = {
 export const TAG_TYPE_COLORS: Record<string, string> = {
   platform: "#00b4d8",
   genre: "#533483",
+  source: "#417a9b", // storefront imports (steam, gog, …)
+  status: "#8d5a2b", // unplayed / abandoned / maybe
 };

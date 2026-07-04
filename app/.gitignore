@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local Steam test data (contains library, never commit)
+fixtures/
