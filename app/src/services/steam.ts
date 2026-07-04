@@ -2,6 +2,7 @@ import { db, getSetting, SETTINGS } from "../db/database";
 import { addGame, addNote, addTag, isNeverPlayed } from "../db/repo";
 import { fmtMinutes, isoDate } from "../logic/derive";
 import { cleanTitle, normalizeTitle } from "../logic/normalize";
+import { findFuzzyMatch } from "../logic/fuzzy";
 import { RowResult, startImport } from "./importQueue";
 
 /**
@@ -9,8 +10,9 @@ import { RowResult, startImport } from "./importQueue";
  *
  * Merge policy (user decision):
  * - Games already linked by appid -> skipped (idempotent re-sync).
- * - Games matching an existing entry by normalized title -> MERGED into it,
- *   flagged with a `source:steam` tag + an audit note, playtime only filled
+ * - Games matching an existing entry by normalized title (exact, or via the
+ *   conservative fuzzy tier in logic/fuzzy.ts) -> MERGED into it, flagged
+ *   with a `source:steam` tag + an audit note, playtime only filled
  *   if the existing entry has no tracked time (avoids double counting).
  * - Everything else -> added; never-played Steam games additionally get a
  *   `status:unplayed` tag so they don't drown the real backlog.
@@ -72,7 +74,15 @@ function importSteamRow(
 
   const norm = normalizeTitle(title);
   const lastPlayed = lastPlayedDate(g);
-  const existingId = byNorm.get(norm);
+  let existingId = byNorm.get(norm);
+  let fuzzyNorm: string | null = null; // set when the tier-3 fuzzy match hit
+  if (existingId == null) {
+    const fm = findFuzzyMatch(norm, byNorm);
+    if (fm) {
+      existingId = fm.id;
+      fuzzyNorm = fm.norm;
+    }
+  }
 
   if (existingId != null) {
     // ---- merge into existing entry, flag it ----
@@ -118,9 +128,13 @@ function importSteamRow(
       existingId,
       `Merged from Steam import (appid ${appid}` +
         (g.playtime_forever > 0 ? `, ${fmtMinutes(g.playtime_forever)} on Steam` : "") +
+        (fuzzyNorm ? `, fuzzy title match on "${fuzzyNorm}"` : "") +
         `)`
     );
-    return { status: "merged", detail: details.join(" ") || "linked" };
+    return {
+      status: "merged",
+      detail: (fuzzyNorm ? "≈ " : "") + (details.join(" ") || "linked"),
+    };
   }
 
   // ---- add as new game ----

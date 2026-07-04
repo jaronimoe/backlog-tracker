@@ -32,7 +32,10 @@ app/
 │   ├── logic/
 │   │   ├── derive.ts           Pure functions: deriveGroup, isRecentlyPlayed, streak,
 │   │   │                       progressPercent, fmtMinutes, isoDate, playDay, …
-│   │   └── normalize.ts        normalizeTitle() + cleanTitle() — used by ALL importers.
+│   │   ├── normalize.ts        normalizeTitle() + cleanTitle() — used by ALL importers.
+│   │   └── fuzzy.ts            findFuzzyMatch() — tier-3 dedup (subtitle-drop + typo
+│   │                           tolerance, numeric-token guarded). Used after exact
+│   │                           normalized-title lookup misses.
 │   ├── services/
 │   │   ├── importQueue.ts      Generic non-blocking import runner + observable store.
 │   │   │                       All importers call startImport() from here.
@@ -71,7 +74,8 @@ today shifted back 5 hours so past-midnight play logs to the previous day.
 ### 4. All import paths use importQueue + normalizeTitle
 Any new importer (GOG, eShop, etc.) must:
 - Call `startImport(label, titles, processRow)` from `importQueue.ts`
-- Use `normalizeTitle()` from `logic/normalize.ts` for dedup against existing games
+- Use `normalizeTitle()` from `logic/normalize.ts` for dedup against existing games,
+  falling back to `findFuzzyMatch()` from `logic/fuzzy.ts` when the exact lookup misses
 - Insert into `game_external_ids` with `(game_id, source, external_id)` for idempotent re-runs
 - Tag merged games with `source:<storefront>` so users can see what was auto-linked
 
@@ -157,7 +161,9 @@ Tags with that prefix will automatically render in that colour via `Tag` in `ui.
    - `byNorm: Map<normalizedTitle, gameId>` — from all games
 5. Process each game row:
    - Check `linked` → duplicate
-   - Check `byNorm` via `normalizeTitle(name)` → merge (add external id, tags, note; fill playtime only if `isNeverPlayed()`)
+   - Check `byNorm` via `normalizeTitle(name)`, then `findFuzzyMatch(norm, byNorm)` → merge
+     (add external id, tags, note; fill playtime only if `isNeverPlayed()`; mark fuzzy
+     merges with a `≈` detail prefix + mention the match in the audit note)
    - Otherwise → `addGame()` + insert external id + update both Maps
 6. Call `startImport(label, names, processRow)` — the queue handles chunking + UI.
 7. Add credentials to `SETTINGS` + a section in `SettingsScreen.tsx`.

@@ -3,6 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { db } from "../db/database";
 import { addGame, addNote, setOnHold } from "../db/repo";
 import { normalizeTitle } from "../logic/normalize";
+import { findFuzzyMatch } from "../logic/fuzzy";
 import { RowResult, startImport } from "./importQueue";
 
 /**
@@ -10,7 +11,8 @@ import { RowResult, startImport } from "./importQueue";
  *   title,original_entry,platform,year_started,year_completed,status,hours,notes
  *
  * Runs on the shared non-blocking import queue (see importQueue.ts).
- * Duplicates are detected via normalized titles, so re-runs are safe.
+ * Duplicates are detected via normalized titles plus the conservative
+ * fuzzy tier (logic/fuzzy.ts), so re-runs are safe.
  */
 
 // ---------- tiny quote-aware CSV parser ----------
@@ -81,7 +83,7 @@ interface Cols {
 function importRow(
   cells: string[],
   cols: Cols,
-  existing: Set<string>
+  existing: Map<string, number>
 ): RowResult {
   const get = (i: number) => (i >= 0 && i < cells.length ? cells[i].trim() : "");
 
@@ -90,7 +92,9 @@ function importRow(
   const norm = normalizeTitle(title);
   if (existing.has(norm))
     return { status: "duplicate", detail: "already in library" };
-  existing.add(norm);
+  const fuzzy = findFuzzyMatch(norm, existing);
+  if (fuzzy)
+    return { status: "duplicate", detail: `≈ "${fuzzy.norm}" in library` };
 
   const platform = get(cols.platform);
   const status = get(cols.status).toLowerCase();
@@ -142,6 +146,7 @@ function importRow(
     noteParts.push(`(imported as: ${orig})`);
   if (noteParts.length > 0) addNote(id, noteParts.join(" "));
 
+  existing.set(norm, id);
   return { status: "added", detail };
 }
 
@@ -172,10 +177,10 @@ export function startCsvImport(text: string, fileName: string | null) {
       : r
   );
 
-  const existing = new Set(
+  const existing = new Map<string, number>(
     db
-      .getAllSync<{ t: string }>("SELECT title t FROM games")
-      .map((r) => normalizeTitle(r.t))
+      .getAllSync<{ id: number; t: string }>("SELECT id, title t FROM games")
+      .map((r) => [normalizeTitle(r.t), r.id])
   );
 
   startImport(

@@ -14,6 +14,8 @@ import {
   streak,
   WindowConfig,
 } from "../logic/derive";
+import { normalizeTitle } from "../logic/normalize";
+import { findFuzzyMatch } from "../logic/fuzzy";
 
 export function windowConfig(): WindowConfig {
   const recentDays = parseInt(getSetting(SETTINGS.recentDays, "14"), 10);
@@ -107,6 +109,50 @@ export function setOnHold(id: number, on: boolean, note: string | null) {
     on ? note : null,
     id,
   ]);
+}
+
+// ---------- external ids & dedup ----------
+
+/** Game already linked to this (source, external_id), or null. */
+export function findByExternalId(
+  source: string,
+  externalId: string
+): number | null {
+  const row = db.getFirstSync<{ game_id: number }>(
+    "SELECT game_id FROM game_external_ids WHERE source = ? AND external_id = ?",
+    [source, externalId]
+  );
+  return row?.game_id ?? null;
+}
+
+export function linkExternalId(
+  gameId: number,
+  source: string,
+  externalId: string
+) {
+  db.runSync(
+    "INSERT OR IGNORE INTO game_external_ids (game_id, source, external_id) VALUES (?, ?, ?)",
+    [gameId, source, externalId]
+  );
+}
+
+/**
+ * Tier 2 + 3 dedup against the whole library: exact normalized-title match,
+ * falling back to the conservative fuzzy matcher. Used to warn on manual adds.
+ */
+export function findSimilarGame(
+  title: string
+): { id: number; title: string } | null {
+  const norm = normalizeTitle(title);
+  const rows = db.getAllSync<{ id: number; title: string }>(
+    "SELECT id, title FROM games"
+  );
+  const byNorm = new Map<string, number>(
+    rows.map((r) => [normalizeTitle(r.title), r.id])
+  );
+  const id = byNorm.get(norm) ?? findFuzzyMatch(norm, byNorm)?.id;
+  if (id == null) return null;
+  return rows.find((r) => r.id === id) ?? null;
 }
 
 // ---------- tags ----------

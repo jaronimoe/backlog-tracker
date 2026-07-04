@@ -72,7 +72,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - Status values: `completed`, `in_progress`, `halted`, `abandoned`, `backlog`, `maybe`
 - Quoted fields (commas in notes/titles) handled correctly
 - Fuzzy hours (`20?`, `21.5`) parsed correctly
-- Dedup via **normalized titles** (strips ®™©, edition suffixes, converts roman numerals) — safe to re-run
+- Dedup via **normalized titles** (strips ®™©, edition suffixes, converts roman numerals) plus a conservative **fuzzy tier** — safe to re-run
 - Same live Import tab as Steam
 
 #### JSON backup (Settings → Backup & Sync)
@@ -154,7 +154,7 @@ All importers (CSV, Steam, future GOG/eShop) use the same pipeline:
 3. **Dedup tiers**
    - Tier 1: `game_external_ids` lookup by stable ID (instant, idempotent)
    - Tier 2: normalized-title match → **merge** (adds tags + note, fills playtime only if zero)
-   - Tier 3 (future): fuzzy / IGDB canonical ID match
+   - Tier 3: fuzzy title match (subtitle-drop + typo tolerance, numeric-token guarded) / IGDB canonical ID match on manual adds
 4. **Queue** — `startImport()` in `importQueue.ts` runs rows in chunks of 15, yielding to the UI between batches via `setTimeout(0)`
 5. **UI** — `ImportScreen` subscribes to the queue store via `useImportState()` (`useSyncExternalStore`); the tab is conditionally rendered in `App.tsx` and auto-dismisses after 6 seconds
 

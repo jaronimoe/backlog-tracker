@@ -13,7 +13,12 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Linking from "expo-linking";
 import { C } from "../theme";
 import { Btn, Field, Input, TagRow } from "../components/ui";
-import { addGame } from "../db/repo";
+import {
+  addGame,
+  findByExternalId,
+  findSimilarGame,
+  linkExternalId,
+} from "../db/repo";
 import { isoDate } from "../logic/derive";
 import { igdbConfigured, IgdbGame, searchIgdb } from "../services/igdb";
 
@@ -51,7 +56,7 @@ export default function AddGameScreen({ navigation }: any) {
     }
   };
 
-  const pick = (r: IgdbGame) => {
+  const applyPick = (r: IgdbGame) => {
     setPicked(r);
     setTitle(r.name);
     setResults([]);
@@ -61,15 +66,48 @@ export default function AddGameScreen({ navigation }: any) {
     ]);
   };
 
+  const pick = (r: IgdbGame) => {
+    // IGDB-canonical dedup: this exact IGDB game is already in the library
+    if (findByExternalId("igdb", String(r.id)) != null) {
+      Alert.alert(
+        "Already in your library",
+        `"${r.name}" is already linked to a game in your library.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Add anyway", onPress: () => applyPick(r) },
+        ]
+      );
+      return;
+    }
+    applyPick(r);
+  };
+
   const save = () => {
     if (!title.trim()) {
       Alert.alert("Title required", "The minimum to add a game is its name.");
       return;
     }
+    // title dedup (exact-normalized + fuzzy) against the library
+    const similar = findSimilarGame(title.trim());
+    if (similar) {
+      Alert.alert(
+        "Possible duplicate",
+        `"${similar.title}" is already in your library. Add anyway?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Add anyway", onPress: doSave },
+        ]
+      );
+      return;
+    }
+    doSave();
+  };
+
+  const doSave = () => {
     const importedMinutes =
       (parseInt(hours || "0", 10) || 0) * 60 + (parseInt(mins || "0", 10) || 0);
     const startIso = alreadyStarted ? isoDate(startDate) : null;
-    addGame({
+    const id = addGame({
       title: title.trim(),
       cover_url: picked?.coverUrl ?? null,
       release_year: picked?.releaseYear ?? null,
@@ -81,6 +119,8 @@ export default function AddGameScreen({ navigation }: any) {
       tags,
       walkthrough_url: wtUrl.trim() || null,
     });
+    // link the IGDB id so future adds/imports can dedup on it
+    if (picked) linkExternalId(id, "igdb", String(picked.id));
     navigation.goBack();
   };
 

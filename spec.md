@@ -110,7 +110,7 @@ All importers share the same non-blocking queue (`src/services/importQueue.ts`):
 ### Deduplication tiers (all importers)
 1. **External ID** — `game_external_ids(source, external_id)` unique constraint. Instant, fully idempotent.
 2. **Normalized title** — `normalizeTitle()` strips ®™©, edition suffixes (GOTY / Definitive / Remastered / …), converts roman numerals (II–XIII, V; intentionally excludes I and X), drops leading "the", normalizes `&` → "and". Cross-source match → **merge**.
-3. **Fuzzy / IGDB canonical** 🔲 Phase 2.
+3. **Fuzzy / IGDB canonical** ✅ — conservative fuzzy match on normalized titles (`logic/fuzzy.ts`): subtitle-drop ("witcher 3" ⊆ "witcher 3 wild hunt") + typo tolerance (length-scaled Levenshtein). Numeric tokens must match exactly (RE2 ≠ RE3), expansion markers (episode/chapter/part/…) never merge. Manual adds warn on similar titles; IGDB picks are linked via `game_external_ids(source='igdb')` and dedup on the canonical IGDB id.
 
 ### Merge behaviour
 When a new import entry matches an existing game:
@@ -196,6 +196,5 @@ Only the value portion renders in the UI. Typed tags sort before plain tags. Eac
 - 🔲 Weekly digest summary card
 - 🔲 Launch game from local path (Android)
 - 🔲 Game recommender integration
-- 🔲 Fuzzy / IGDB-canonical dedup tier (Phase 3 of import pipeline)
 - 🔲 Pie chart genre distribution
 - 🔲 On My Mind history view
