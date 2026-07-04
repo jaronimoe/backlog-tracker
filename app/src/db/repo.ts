@@ -1,4 +1,4 @@
-import { db, getSetting, SETTINGS } from "./database";
+import { db, getSetting, SETTINGS, withTx } from "./database";
 import {
   Game,
   GameWithMeta,
@@ -47,7 +47,7 @@ export interface NewGame {
 
 export function addGame(g: NewGame): number {
   let id = 0;
-  db.withTransactionSync(() => {
+  withTx(() => {
     const res = db.runSync(
       `INSERT INTO games (title, cover_url, release_year, platform_summary,
         start_date, start_precision, imported_minutes, last_played_override, walkthrough_url)
@@ -94,7 +94,7 @@ export function deleteGame(id: number) {
 }
 
 export function setOnMind(id: number, on: boolean) {
-  db.withTransactionSync(() => {
+  withTx(() => {
     db.runSync("UPDATE games SET on_mind = ? WHERE id = ?", [on ? 1 : 0, id]);
     db.runSync("INSERT INTO mind_events (game_id, added) VALUES (?, ?)", [
       id,

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { C } from "../theme";
 import { Btn, Field, Input } from "../components/ui";
 import { getSetting, setSetting, SETTINGS } from "../db/database";
@@ -20,6 +20,7 @@ export default function SettingsScreen() {
   const [steamKey, setSteamKey] = useState(getSetting(SETTINGS.steamApiKey, ""));
   const [steamId, setSteamId] = useState(getSetting(SETTINGS.steamId, ""));
   const [steamBusy, setSteamBusy] = useState(false);
+  const [steamResync, setSteamResync] = useState(false);
 
   const [verifying, setVerifying] = useState(false);
 
@@ -115,7 +116,8 @@ export default function SettingsScreen() {
         (steamcommunity.com/dev/apikey) and SteamID64; the profile's "Game
         details" must be Public. Games matching existing entries are merged and
         flagged with a source:steam tag; never-played games get status:unplayed.
-        Safe to re-run — already-linked games are skipped.
+        Safe to re-run — already-linked games are skipped unless “Re-sync
+        playtime” is checked.
       </Text>
       <Field label="Steam Web API key">
         <Input value={steamKey} onChangeText={setSteamKey} autoCapitalize="none" secureTextEntry />
@@ -123,7 +125,7 @@ export default function SettingsScreen() {
       <Field label="SteamID64 (17 digits — steamid.io helps)">
         <Input value={steamId} onChangeText={setSteamId} keyboardType="numeric" />
       </Field>
-      <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <Btn
           label={steamBusy ? "Fetching library…" : "Import Steam library"}
           kind="secondary"
@@ -132,7 +134,7 @@ export default function SettingsScreen() {
             setSetting(SETTINGS.steamId, steamId.trim());
             setSteamBusy(true);
             try {
-              await startSteamImport();
+              await startSteamImport(steamResync);
               setTimeout(() => navigation.navigate("Import"), 150);
             } catch (e: any) {
               Alert.alert("Steam import failed", String(e?.message ?? e));
@@ -141,6 +143,30 @@ export default function SettingsScreen() {
             }
           }}
         />
+        <Pressable
+          onPress={() => setSteamResync((v) => !v)}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+          hitSlop={8}
+        >
+          <View
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 4,
+              borderWidth: 1.5,
+              borderColor: steamResync ? C.accent : C.textMuted,
+              backgroundColor: steamResync ? C.accent : "transparent",
+
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {steamResync && (
+              <Text style={{ color: C.bgPrimary, fontSize: 13, fontWeight: "700" }}>✓</Text>
+            )}
+          </View>
+          <Text style={{ color: C.textPrimary, fontSize: 12 }}>Re-sync playtime</Text>
+        </Pressable>
       </View>
 
       <Text style={h.title}>Bulk add from CSV</Text>

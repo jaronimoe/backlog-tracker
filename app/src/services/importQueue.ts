@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { db } from "../db/database";
+import { withTx } from "../db/database";
 
 /**
  * Generic non-blocking import queue, shared by all importers (CSV, Steam, …).
@@ -117,7 +117,7 @@ async function run(processRow: (index: number) => RowResult) {
       const nextItems = [...state.items];
       let { added, merged, skippedDuplicates, skippedInvalid } = state;
 
-      db.withTransactionSync(() => {
+      withTx(() => {
         for (let j = i; j < end; j++) {
           const r = processRow(j);
           nextItems[j] = { ...nextItems[j], status: r.status, detail: r.detail };

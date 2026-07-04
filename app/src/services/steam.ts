@@ -9,7 +9,9 @@ import { RowResult, startImport } from "./importQueue";
  * Steam library import (IPlayerService/GetOwnedGames).
  *
  * Merge policy (user decision):
- * - Games already linked by appid -> skipped (idempotent re-sync).
+ * - Games already linked by appid -> skipped (idempotent re-sync), unless
+ *   `resyncPlaytime` is set, in which case their Steam playtime and
+ *   last-played date are refreshed from the live library.
  * - Games matching an existing entry by normalized title (exact, or via the
  *   conservative fuzzy tier in logic/fuzzy.ts) -> MERGED into it, flagged
  *   with a `source:steam` tag + an audit note, playtime only filled
@@ -64,13 +66,17 @@ function lastPlayedDate(g: SteamGame): string | null {
 function importSteamRow(
   g: SteamGame,
   linked: Map<string, number>,
-  byNorm: Map<string, number>
+  byNorm: Map<string, number>,
+  resyncPlaytime: boolean
 ): RowResult {
   const appid = String(g.appid);
   const title = cleanTitle(g.name);
   if (!title) return { status: "invalid", detail: "empty name" };
-  if (linked.has(appid))
-    return { status: "duplicate", detail: "already linked" };
+  if (linked.has(appid)) {
+    if (!resyncPlaytime)
+      return { status: "duplicate", detail: "already linked" };
+    return resyncLinked(g, linked.get(appid)!);
+  }
 
   const norm = normalizeTitle(title);
   const lastPlayed = lastPlayedDate(g);
@@ -163,8 +169,45 @@ function importSteamRow(
   };
 }
 
+/**
+ * Refresh an already-linked Steam entry's playtime + last-played from the
+ * live library. `imported_minutes` on a Steam-linked game holds the Steam
+ * total, so overwriting it with the fresh total is correct (any manually
+ * logged sessions live separately and are untouched).
+ */
+function resyncLinked(g: SteamGame, existingId: number): RowResult {
+  const lastPlayed = lastPlayedDate(g);
+  const row = db.getFirstSync<{
+    imported_minutes: number;
+    last_played_override: string | null;
+  }>(
+    "SELECT imported_minutes, last_played_override FROM games WHERE id = ?",
+    [existingId]
+  )!;
+
+  const delta = g.playtime_forever - row.imported_minutes;
+  const details: string[] = [];
+  if (delta !== 0) {
+    db.runSync("UPDATE games SET imported_minutes = ? WHERE id = ?", [
+      g.playtime_forever,
+      existingId,
+    ]);
+    details.push((delta > 0 ? "+" : "-") + fmtMinutes(Math.abs(delta)));
+  }
+  if (lastPlayed && (!row.last_played_override || lastPlayed > row.last_played_override)) {
+    db.runSync("UPDATE games SET last_played_override = ? WHERE id = ?", [
+      lastPlayed,
+      existingId,
+    ]);
+  }
+
+  if (details.length === 0)
+    return { status: "duplicate", detail: "already up to date" };
+  return { status: "merged", detail: details.join(" ") };
+}
+
 /** Fetch the library and queue a non-blocking import. */
-export async function startSteamImport() {
+export async function startSteamImport(resyncPlaytime = false) {
   const games = await fetchSteamLibrary();
   // played games first (nicer to watch, and canonical entries get created
   // before their unplayed remaster/duplicate listings merge onto them)
@@ -189,6 +232,6 @@ export async function startSteamImport() {
   startImport(
     "Steam library",
     games.map((g) => cleanTitle(g.name)),
-    (i) => importSteamRow(games[i], linked, byNorm)
+    (i) => importSteamRow(games[i], linked, byNorm, resyncPlaytime)
   );
 }

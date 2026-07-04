@@ -1,7 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
-import { db } from "../db/database";
+import { db, withTx } from "../db/database";
 
 const TABLES = [
   "settings",
@@ -45,7 +45,7 @@ export async function pickAndImport(): Promise<number> {
   const data = JSON.parse(raw);
   if (data.app !== "backlog-tracker") throw new Error("Not a backlog-tracker export");
 
-  db.withTransactionSync(() => {
+  withTx(() => {
     for (const t of [...TABLES].reverse()) db.runSync(`DELETE FROM ${t}`);
     for (const t of TABLES) {
       const rows = (data[t] ?? []) as Record<string, unknown>[];

@@ -3,6 +3,28 @@ import * as SQLite from "expo-sqlite";
 export const db = SQLite.openDatabaseSync("backlog.db");
 
 /**
+ * Nest-safe transaction wrapper. SQLite (and expo-sqlite's
+ * withTransactionSync) does not support nested BEGINs: an inner BEGIN
+ * throws, its handler ROLLBACKs the *outer* transaction, and the outer
+ * handler then fails with "cannot rollback - no transaction is active".
+ * Use withTx everywhere instead; inner calls simply join the outer
+ * transaction.
+ */
+let txDepth = 0;
+export function withTx(fn: () => void) {
+  if (txDepth > 0) {
+    fn();
+    return;
+  }
+  txDepth++;
+  try {
+    db.withTransactionSync(fn);
+  } finally {
+    txDepth--;
+  }
+}
+
+/**
  * Versioned migrations. NEVER edit an existing migration — always append.
  * This guarantees forward compatibility: user data survives every app update.
  */
@@ -99,7 +121,7 @@ export function migrate() {
   if (row == null) db.runSync("INSERT INTO schema_version (version) VALUES (0)");
 
   for (let v = version; v < MIGRATIONS.length; v++) {
-    db.withTransactionSync(() => {
+    withTx(() => {
       for (const stmt of MIGRATIONS[v]) db.execSync(stmt);
       db.runSync("UPDATE schema_version SET version = ?", [v + 1]);
     });
