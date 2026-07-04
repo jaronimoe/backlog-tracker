@@ -2,9 +2,11 @@ import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { C } from "../theme";
-import { ProgressBar } from "../components/ui";
+import { ProgressBar, Stars } from "../components/ui";
 import { FilterChip } from "./GamesScreen";
 import {
+  allTimeFaves,
+  favesByYear,
   genreDistribution,
   longestToComplete,
   Range,
@@ -42,6 +44,8 @@ export default function StatsScreen({ navigation }: any) {
   const genres = genreDistribution(genreRange);
   const longest = longestToComplete();
   const wrap = wrapItUp().slice(0, 10);
+  const faves = allTimeFaves().slice(0, 10);
+  const yearFaves = favesByYear();
 
   return (
     <ScrollView
@@ -62,6 +66,51 @@ export default function StatsScreen({ navigation }: any) {
             </View>
           ))}
         </View>
+      </Card>
+
+      {/* all-time favourites */}
+      <Card title="🌟 All-Time Favourites">
+        {faves.length === 0 ? (
+          <EmptyFaves />
+        ) : (
+          faves.map((g, i) => (
+            <Pressable
+              key={g.id}
+              style={st.rankRow}
+              onPress={() => navigation.navigate("GameDetail", { id: g.id })}
+            >
+              <Text style={[st.rankNum, i < 3 && { color: [C.gold, C.silver, C.bronze][i] }]}>
+                {i + 1}
+              </Text>
+              <Text style={st.rankGame} numberOfLines={1}>{g.title}</Text>
+              <Stars rating={g.rating} />
+              <Text style={st.rankMeta}>{fmtMinutes(g.totalMinutes)}</Text>
+            </Pressable>
+          ))
+        )}
+      </Card>
+
+      {/* favourites per year */}
+      <Card title="🗓 Favourites by Year">
+        {yearFaves.length === 0 ? (
+          <EmptyFaves />
+        ) : (
+          yearFaves.map(({ year, games }) => (
+            <View key={year} style={{ marginBottom: 8 }}>
+              <Text style={st.yearLabel}>{year}</Text>
+              {games.map((g) => (
+                <Pressable
+                  key={g.id}
+                  style={st.rankRow}
+                  onPress={() => navigation.navigate("GameDetail", { id: g.id })}
+                >
+                  <Text style={st.rankGame} numberOfLines={1}>{g.title}</Text>
+                  <Stars rating={g.rating} />
+                </Pressable>
+              ))}
+            </View>
+          ))
+        )}
       </Card>
 
       {/* wrap it up */}
@@ -177,6 +226,14 @@ function Empty() {
   return <Text style={{ color: C.textMuted, fontSize: 12 }}>No data yet.</Text>;
 }
 
+function EmptyFaves() {
+  return (
+    <Text style={{ color: C.textMuted, fontSize: 12 }}>
+      Rate games with ★ on their page to see favourites here.
+    </Text>
+  );
+}
+
 const st = {
   statCard: {
     flex: 1,
@@ -197,4 +254,11 @@ const st = {
   rankGame: { color: C.textPrimary, fontSize: 13, flex: 1 },
   rankValue: { color: C.progressFill, fontSize: 13, fontWeight: "600" as const },
   rankMeta: { color: C.textMuted, fontSize: 10 },
+  yearLabel: {
+    color: C.textSecondary,
+    fontSize: 12,
+    fontWeight: "700" as const,
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
 };

@@ -102,7 +102,7 @@ const id = addGame({
 ### Updating a game
 ```ts
 import { updateGame } from "../db/repo";
-updateGame(id, { cover_url: "https://...", rating: 8 });
+updateGame(id, { cover_url: "https://...", rating: 4 }); // rating: 1–5 stars or null
 ```
 Only include changed fields — it builds a dynamic `SET` clause.
 

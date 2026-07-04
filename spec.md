@@ -36,7 +36,7 @@ State is computed by `deriveGroup()` in `src/logic/derive.ts`. Never stored.
 - Title, release year, platform, cover URL
 - Start date (accepts `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`; precision stored accordingly)
 - Base playtime (imported minutes, outside logged sessions)
-- Completed date, rating (1–10), final note
+- Completed date, rating (1–5 stars, editable on the game page & edit modal, filterable), final note
 
 **Cover art** can also be changed by tapping the cover image itself on game
 detail ("tap to change" hint underneath). Opens an IGDB search modal
@@ -98,6 +98,8 @@ Trigger: logging the **first session** of a **never-played** game.
 - Genre distribution (bar rows by playtime).
 - **Longest to complete**: calendar days from `start_date` to `completed_at`.
 - **Wrap it up** tab: unfinished games ranked by progress % descending.
+- **All-Time Favourites**: rated games, best first (rating, then playtime).
+- **Favourites by Year**: top-rated games per year (completed year, falling back to last played / started).
 
 ---
 

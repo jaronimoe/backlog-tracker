@@ -19,6 +19,7 @@ import {
   Field,
   Input,
   ProgressBar,
+  Stars,
   TagRow,
 } from "../components/ui";
 import {
@@ -238,6 +239,16 @@ export default function GameDetailScreen({ route, navigation }: any) {
           <Text style={{ color: C.textSecondary, fontSize: 12 }}>
             Playtime: {fmtMinutes(game.totalMinutes)} • {game.sessionCount} sessions
           </Text>
+          <View style={{ marginTop: 8 }}>
+            <Stars
+              rating={game.rating}
+              size={22}
+              onRate={(r) => {
+                updateGame(id, { rating: r });
+                reload();
+              }}
+            />
+          </View>
           {game.start_date && (
             <Text style={{ color: C.textSecondary, fontSize: 12 }}>
               Started: {game.start_date} ({game.start_precision})
@@ -623,7 +634,7 @@ function EditGameModal({
   const [impHours, setImpHours] = useState(String(Math.floor(game.imported_minutes / 60)));
   const [impMins, setImpMins] = useState(String(game.imported_minutes % 60));
   const [completedAt, setCompletedAt] = useState(game.completed_at ?? "");
-  const [rating, setRating] = useState(game.rating ? String(game.rating) : "");
+  const [rating, setRating] = useState<number | null>(game.rating);
   const [finalNote, setFinalNote] = useState(game.final_note ?? "");
 
   const save = () => {
@@ -643,7 +654,6 @@ function EditGameModal({
     }
     const importedMinutes =
       (parseInt(impHours || "0", 10) || 0) * 60 + (parseInt(impMins || "0", 10) || 0);
-    const r = parseInt(rating, 10);
     updateGame(game.id, {
       title: title.trim(),
       release_year: parseInt(year, 10) || null,
@@ -653,7 +663,7 @@ function EditGameModal({
       start_precision: start.precision,
       imported_minutes: importedMinutes,
       completed_at: completed || null,
-      rating: Number.isFinite(r) && r >= 1 ? Math.min(10, r) : null,
+      rating,
       final_note: finalNote.trim() || null,
     });
     onClose(true);
@@ -697,11 +707,11 @@ function EditGameModal({
             <Field label="Completed on (YYYY-MM-DD — empty = not completed)">
               <Input value={completedAt} onChangeText={setCompletedAt} placeholder="" autoCapitalize="none" />
             </Field>
+            <Field label="Rating (tap again to clear)">
+              <Stars rating={rating} size={24} onRate={setRating} />
+            </Field>
             {completedAt.trim() !== "" && (
               <>
-                <Field label="Rating (1–10, optional)">
-                  <Input value={rating} onChangeText={setRating} keyboardType="numeric" style={{ width: 70, textAlign: "center" }} />
-                </Field>
                 <Field label="Final note (optional)">
                   <Input value={finalNote} onChangeText={setFinalNote} multiline style={{ minHeight: 50, textAlignVertical: "top" }} />
                 </Field>

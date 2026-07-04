@@ -114,6 +114,11 @@ const MIGRATIONS: string[][] = [
     `ALTER TABLE games ADD COLUMN recap_text TEXT`,
     `ALTER TABLE games ADD COLUMN recap_key TEXT`,
   ],
+  // v4 — rating is now 1–5 stars (was 1–10). Map old values with ceil(r/2)
+  // so 9–10 → 5★, 7–8 → 4★, … 1–2 → 1★.
+  [
+    `UPDATE games SET rating = (rating + 1) / 2 WHERE rating IS NOT NULL`,
+  ],
 ];
 
 export function migrate() {

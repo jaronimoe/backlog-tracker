@@ -93,6 +93,38 @@ export function longestToComplete(): LongestEntry[] {
     .sort((a, b) => b.days - a.days);
 }
 
+/** Rated games, best first (rating desc, playtime breaks ties). */
+export function allTimeFaves(): GameWithMeta[] {
+  return allGames()
+    .filter((g) => g.rating != null)
+    .sort((a, b) => b.rating! - a.rating! || b.totalMinutes - a.totalMinutes);
+}
+
+export interface YearFaves {
+  year: string;
+  games: GameWithMeta[];
+}
+
+/** The year a rated game belongs to: completed, else last played, else started. */
+function faveYear(g: GameWithMeta): string | null {
+  const d = g.completed_at ?? g.lastPlayed ?? g.start_date;
+  return d ? d.slice(0, 4) : null;
+}
+
+/** Top-rated games per year, newest year first. */
+export function favesByYear(topN = 3): YearFaves[] {
+  const byYear = new Map<string, GameWithMeta[]>();
+  for (const g of allTimeFaves()) {
+    const y = faveYear(g);
+    if (!y) continue;
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y)!.push(g); // allTimeFaves is already sorted best-first
+  }
+  return [...byYear.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([year, games]) => ({ year, games: games.slice(0, topN) }));
+}
+
 /** Almost-finished, not completed, ranked by progress desc. */
 export function wrapItUp(): GameWithMeta[] {
   return allGames()

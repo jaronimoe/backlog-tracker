@@ -65,6 +65,41 @@ export function TagRow({
   );
 }
 
+/**
+ * Five-star rating (1–5). Interactive when onRate is given:
+ * tap a star to set the rating, tap the current rating again to clear it.
+ */
+export function Stars({
+  rating,
+  size = 13,
+  onRate,
+}: {
+  rating: number | null;
+  size?: number;
+  onRate?: (r: number | null) => void;
+}) {
+  if (!onRate && !rating) return null;
+  return (
+    <View style={{ flexDirection: "row", gap: onRate ? 8 : 1 }}>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const filled = rating != null && n <= rating;
+        const star = (
+          <Text style={{ fontSize: size, color: filled ? C.gold : C.textMuted }}>
+            {filled ? "★" : "☆"}
+          </Text>
+        );
+        return onRate ? (
+          <Pressable key={n} hitSlop={8} onPress={() => onRate(n === rating ? null : n)}>
+            {star}
+          </Pressable>
+        ) : (
+          <React.Fragment key={n}>{star}</React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Cover({
   game,
   w = 36,
@@ -122,6 +157,11 @@ export function GameRow({
           {game.title}
           {game.streak > 1 ? `  🔥 ${game.streak}` : ""}
           {game.on_mind ? "  💭" : ""}
+          {game.rating ? (
+            <Text style={{ color: C.gold, fontSize: 11 }}>
+              {"  " + "★".repeat(game.rating)}
+            </Text>
+          ) : null}
         </Text>
         <Text
           style={[s.rowMeta, game.on_hold ? { color: C.accent } : null]}

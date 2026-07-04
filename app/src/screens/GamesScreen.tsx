@@ -72,16 +72,19 @@ export default function GamesScreen({ navigation }: any) {
       .map(([type, set]) => ({ type, tags: [...set].sort() }));
   }, [games]);
 
-  const visible = useMemo(
-    () =>
-      games.filter(
-        (g) =>
-          (!searching ||
-            g.title.toLowerCase().includes(query.trim().toLowerCase())) &&
-          (!filter || g.tags.includes(filter))
-      ),
-    [games, query, searching, filter]
-  );
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matchesFilter = (g: GameWithMeta) => {
+      if (!filter) return true;
+      if (filter.startsWith("rating:"))
+        return g.rating === parseInt(filter.slice(7), 10);
+      return g.tags.includes(filter);
+    };
+    return games.filter(
+      (g) =>
+        (!searching || g.title.toLowerCase().includes(q)) && matchesFilter(g)
+    );
+  }, [games, query, searching, filter]);
 
   const recent = visible
     .filter((g) => isRecentlyPlayed(g.lastPlayed, cfg.recentDays))
@@ -166,7 +169,11 @@ export default function GamesScreen({ navigation }: any) {
           <FilterChip
             label={
               filter && !platforms.includes(filter)
-                ? `🔍 ${splitTag(filter).value}`
+                ? `🔍 ${
+                    filter.startsWith("rating:")
+                      ? "★".repeat(parseInt(filter.slice(7), 10))
+                      : splitTag(filter).value
+                  }`
                 : "🔍 Filter"
             }
             active={filter != null && !platforms.includes(filter)}
@@ -199,6 +206,22 @@ export default function GamesScreen({ navigation }: any) {
                   setTagModal(false);
                 }}
               />
+              <View style={{ marginTop: 14 }}>
+                <Text style={ft.groupTitle}>RATING</Text>
+                <View style={ft.chipWrap}>
+                  {[5, 4, 3, 2, 1].map((n) => (
+                    <FilterChip
+                      key={n}
+                      label={"★".repeat(n)}
+                      active={filter === `rating:${n}`}
+                      onPress={() => {
+                        setFilter(filter === `rating:${n}` ? null : `rating:${n}`);
+                        setTagModal(false);
+                      }}
+                    />
+                  ))}
+                </View>
+              </View>
               {tagGroups.map(({ type, tags }) => (
                 <View key={type} style={{ marginTop: 14 }}>
                   <Text style={ft.groupTitle}>{type.toUpperCase()}</Text>

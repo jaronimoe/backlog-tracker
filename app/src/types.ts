@@ -16,7 +16,7 @@ export interface Game {
   on_hold_note: string | null;
   on_mind: number; // 0/1
   completed_at: string | null;
-  rating: number | null;
+  rating: number | null; // 1–5 stars
   final_note: string | null;
   progress_method: ProgressMethod;
   manual_percent: number;
