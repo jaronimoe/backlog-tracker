@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   Switch,
@@ -21,6 +22,7 @@ import {
 import {
   SessionLogModal,
   promptCompletion,
+  m,
 } from "../components/SessionLogModal";
 import {
   addMilestone,
@@ -40,7 +42,30 @@ import {
   updateGame,
 } from "../db/repo";
 import { fmtMinutes } from "../logic/derive";
-import { GameWithMeta, Milestone, Note, ProgressMethod, Session } from "../types";
+import {
+  GameWithMeta,
+  Milestone,
+  Note,
+  ProgressMethod,
+  Session,
+  StartPrecision,
+} from "../types";
+
+/** Accepts YYYY, YYYY-MM, YYYY-MM-DD or empty. */
+function parseFuzzyDate(
+  s: string
+): { date: string | null; precision: StartPrecision | null } | "invalid" {
+  const t = s.trim();
+  if (!t) return { date: null, precision: null };
+  let m2;
+  if ((m2 = t.match(/^(\d{4})$/)))
+    return { date: `${m2[1]}-01-01`, precision: "year" };
+  if ((m2 = t.match(/^(\d{4})-(\d{2})$/)))
+    return { date: `${m2[1]}-${m2[2]}-01`, precision: "month" };
+  if ((m2 = t.match(/^(\d{4})-(\d{2})-(\d{2})$/)))
+    return { date: t, precision: "day" };
+  return "invalid";
+}
 
 const GROUP_LABEL: Record<string, string> = {
   current: "Current",
@@ -58,6 +83,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [tab, setTab] = useState<"progress" | "sessions" | "notes" | "walkthrough">("progress");
   const [logOpen, setLogOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [newMilestone, setNewMilestone] = useState("");
   const [newStretch, setNewStretch] = useState(false);
@@ -130,9 +156,23 @@ export default function GameDetailScreen({ route, navigation }: any) {
       <View style={{ flexDirection: "row", gap: 16, marginBottom: 16 }}>
         <Cover game={game} w={90} h={120} />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: "700" }}>
-            {game.title} {game.on_mind ? "💭" : ""}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: "700", flex: 1 }}>
+              {game.title} {game.on_mind ? "💭" : ""}
+            </Text>
+            <Pressable
+              onPress={() => setEditOpen(true)}
+              hitSlop={10}
+              style={{
+                backgroundColor: C.bgCard,
+                borderRadius: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: C.textSecondary, fontSize: 13 }}>✎ Edit</Text>
+            </Pressable>
+          </View>
           <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 2 }}>
             {[game.release_year, game.platform_summary].filter(Boolean).join(" • ")}
           </Text>
@@ -467,7 +507,135 @@ export default function GameDetailScreen({ route, navigation }: any) {
         visible={logOpen}
         onClose={(changed) => { setLogOpen(false); if (changed) reload(); }}
       />
+
+      {editOpen && (
+        <EditGameModal
+          game={game}
+          visible={editOpen}
+          onClose={(changed) => { setEditOpen(false); if (changed) reload(); }}
+        />
+      )}
     </ScrollView>
+  );
+}
+
+function EditGameModal({
+  game,
+  visible,
+  onClose,
+}: {
+  game: GameWithMeta;
+  visible: boolean;
+  onClose: (changed: boolean) => void;
+}) {
+  const [title, setTitle] = useState(game.title);
+  const [year, setYear] = useState(game.release_year ? String(game.release_year) : "");
+  const [platform, setPlatform] = useState(game.platform_summary ?? "");
+  const [coverUrl, setCoverUrl] = useState(game.cover_url ?? "");
+  const [startDate, setStartDate] = useState(
+    game.start_date
+      ? game.start_precision === "year"
+        ? game.start_date.slice(0, 4)
+        : game.start_precision === "month"
+        ? game.start_date.slice(0, 7)
+        : game.start_date
+      : ""
+  );
+  const [impHours, setImpHours] = useState(String(Math.floor(game.imported_minutes / 60)));
+  const [impMins, setImpMins] = useState(String(game.imported_minutes % 60));
+  const [completedAt, setCompletedAt] = useState(game.completed_at ?? "");
+  const [rating, setRating] = useState(game.rating ? String(game.rating) : "");
+  const [finalNote, setFinalNote] = useState(game.final_note ?? "");
+
+  const save = () => {
+    if (!title.trim()) {
+      Alert.alert("Title required");
+      return;
+    }
+    const start = parseFuzzyDate(startDate);
+    if (start === "invalid") {
+      Alert.alert("Invalid start date", "Use YYYY, YYYY-MM or YYYY-MM-DD (or leave empty).");
+      return;
+    }
+    const completed = completedAt.trim();
+    if (completed && !/^\d{4}-\d{2}-\d{2}$/.test(completed)) {
+      Alert.alert("Invalid completed date", "Use YYYY-MM-DD (or leave empty).");
+      return;
+    }
+    const importedMinutes =
+      (parseInt(impHours || "0", 10) || 0) * 60 + (parseInt(impMins || "0", 10) || 0);
+    const r = parseInt(rating, 10);
+    updateGame(game.id, {
+      title: title.trim(),
+      release_year: parseInt(year, 10) || null,
+      platform_summary: platform.trim() || null,
+      cover_url: coverUrl.trim() || null,
+      start_date: start.date,
+      start_precision: start.precision,
+      imported_minutes: importedMinutes,
+      completed_at: completed || null,
+      rating: Number.isFinite(r) && r >= 1 ? Math.min(10, r) : null,
+      final_note: finalNote.trim() || null,
+    });
+    onClose(true);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={m.overlay}>
+        <View style={[m.modal, { maxHeight: "88%" }]}>
+          <Text style={m.title}>Edit details</Text>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Field label="Title">
+              <Input value={title} onChangeText={setTitle} />
+            </Field>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Field label="Release year">
+                  <Input value={year} onChangeText={setYear} keyboardType="numeric" placeholder="e.g. 2017" />
+                </Field>
+              </View>
+              <View style={{ flex: 2 }}>
+                <Field label="Platform">
+                  <Input value={platform} onChangeText={setPlatform} placeholder="e.g. Switch" />
+                </Field>
+              </View>
+            </View>
+            <Field label="Cover image URL">
+              <Input value={coverUrl} onChangeText={setCoverUrl} autoCapitalize="none" placeholder="https://..." />
+            </Field>
+            <Field label="Started (YYYY, YYYY-MM or YYYY-MM-DD — empty = not started)">
+              <Input value={startDate} onChangeText={setStartDate} placeholder="2021" autoCapitalize="none" />
+            </Field>
+            <Field label="Base playtime (outside logged sessions)">
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <Input value={impHours} onChangeText={setImpHours} keyboardType="numeric" style={{ width: 70, textAlign: "center" }} />
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>hours</Text>
+                <Input value={impMins} onChangeText={setImpMins} keyboardType="numeric" style={{ width: 70, textAlign: "center" }} />
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>minutes</Text>
+              </View>
+            </Field>
+            <Field label="Completed on (YYYY-MM-DD — empty = not completed)">
+              <Input value={completedAt} onChangeText={setCompletedAt} placeholder="" autoCapitalize="none" />
+            </Field>
+            {completedAt.trim() !== "" && (
+              <>
+                <Field label="Rating (1–10, optional)">
+                  <Input value={rating} onChangeText={setRating} keyboardType="numeric" style={{ width: 70, textAlign: "center" }} />
+                </Field>
+                <Field label="Final note (optional)">
+                  <Input value={finalNote} onChangeText={setFinalNote} multiline style={{ minHeight: 50, textAlignVertical: "top" }} />
+                </Field>
+              </>
+            )}
+          </ScrollView>
+          <View style={m.actions}>
+            <Btn label="Cancel" kind="secondary" onPress={() => onClose(false)} />
+            <Btn label="Save" onPress={save} />
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
