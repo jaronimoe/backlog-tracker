@@ -5,9 +5,11 @@ import { Btn, Field, Input } from "../components/ui";
 import { getSetting, setSetting, SETTINGS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
 import { pickAndImport, shareExport } from "../services/exportImport";
-import { pickAndImportCsv } from "../services/csvImport";
+import { useNavigation } from "@react-navigation/native";
+import { pickAndStartCsvImport } from "../services/csvImport";
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<any>();
   const [recentDays, setRecentDays] = useState(getSetting(SETTINGS.recentDays, "14"));
   const [currentWindow, setCurrentWindow] = useState(getSetting(SETTINGS.currentWindow, "year"));
   const [grace, setGrace] = useState(getSetting(SETTINGS.streakGrace, "1"));
@@ -107,7 +109,8 @@ export default function SettingsScreen() {
       <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
         Adds games from a CSV with columns: title, original_entry, platform,
         year_started, year_completed, status, hours, notes. Existing titles are
-        skipped — safe to run multiple times.
+        skipped — safe to run multiple times. Runs in the background: watch
+        progress on the temporary 📥 Import tab.
       </Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Btn
@@ -115,13 +118,9 @@ export default function SettingsScreen() {
           kind="secondary"
           onPress={async () => {
             try {
-              const r = await pickAndImportCsv();
-              if (r == null) return;
-              Alert.alert(
-                "CSV import done",
-                `${r.added} games added (${r.completed} completed, ${r.onHold} on hold).\n` +
-                  `${r.skippedDuplicates} skipped as duplicates, ${r.skippedInvalid} invalid rows.`
-              );
+              const started = await pickAndStartCsvImport();
+              // give the Import tab a moment to mount, then jump to it
+              if (started) setTimeout(() => navigation.navigate("Import"), 150);
             } catch (e) {
               Alert.alert("CSV import failed", String(e));
             }

@@ -11,6 +11,8 @@ import CalendarScreen from "./src/screens/CalendarScreen";
 import StatsScreen from "./src/screens/StatsScreen";
 import MindScreen from "./src/screens/MindScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import ImportScreen from "./src/screens/ImportScreen";
+import { useImportState } from "./src/services/csvImport";
 import GameDetailScreen from "./src/screens/GameDetailScreen";
 import AddGameScreen from "./src/screens/AddGameScreen";
 
@@ -37,9 +39,11 @@ const ICONS: Record<string, string> = {
   Stats: "📊",
   Mind: "💭",
   Settings: "⚙️",
+  Import: "📥",
 };
 
 function Tabs() {
+  const imp = useImportState();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -55,6 +59,7 @@ function Tabs() {
       <Tab.Screen name="Stats" component={StatsScreen} />
       <Tab.Screen name="Mind" component={MindScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
+      {imp.active && <Tab.Screen name="Import" component={ImportScreen} />}
     </Tab.Navigator>
   );
 }
