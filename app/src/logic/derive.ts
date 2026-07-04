@@ -80,13 +80,16 @@ export function deriveGroup(
 ): StateGroup {
   if (progress >= 100 || game.completed_at) return "completed";
   if (game.on_hold) return "on_hold";
-  const started = totalMinutes > 0 || lastPlayed != null;
+  const started = totalMinutes > 0 || lastPlayed != null || game.start_date != null;
   if (!started) return "backlog";
-  if (lastPlayed) {
+  // Most recent activity signal: a logged/overridden play date or the start date.
+  const refDate =
+    [lastPlayed, game.start_date].filter(Boolean).sort().pop() ?? null;
+  if (refDate) {
     const inWindow =
       cfg.currentWindow === "year"
-        ? lastPlayed.slice(0, 4) === today.slice(0, 4)
-        : daysBetween(lastPlayed, today) <= cfg.currentWindow;
+        ? refDate.slice(0, 4) === today.slice(0, 4)
+        : daysBetween(refDate, today) <= cfg.currentWindow;
     if (inWindow) return "current";
   }
   return "backlog_started";

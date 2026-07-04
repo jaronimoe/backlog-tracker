@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { C } from "../theme";
 import { GameRow, Input, Section } from "../components/ui";
@@ -30,6 +30,7 @@ export default function GamesScreen({ navigation }: any) {
   const [logGame, setLogGame] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
+  const [tagModal, setTagModal] = useState(false);
 
   const today = playDay();
   const cfg = windowConfig();
@@ -42,12 +43,33 @@ export default function GamesScreen({ navigation }: any) {
 
   useFocusEffect(reload);
 
-  const genres = useMemo(() => {
-    const set = new Set<string>();
+  // Top 6 platforms ranked by number of games carrying that platform tag.
+  const platforms = useMemo(() => {
+    const counts = new Map<string, number>();
     games.forEach((g) =>
-      g.tags.filter((t) => t.startsWith("genre:")).forEach((t) => set.add(t))
+      g.tags
+        .filter((t) => t.startsWith("platform:"))
+        .forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1))
     );
-    return [...set].sort();
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 6)
+      .map(([tag]) => tag);
+  }, [games]);
+
+  // Every tag present in the library, grouped by type, for the filter modal.
+  const tagGroups = useMemo(() => {
+    const groups = new Map<string, Set<string>>();
+    games.forEach((g) =>
+      g.tags.forEach((t) => {
+        const type = splitTag(t).type ?? "other";
+        if (!groups.has(type)) groups.set(type, new Set());
+        groups.get(type)!.add(t);
+      })
+    );
+    return [...groups.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([type, set]) => ({ type, tags: [...set].sort() }));
   }, [games]);
 
   const visible = useMemo(
@@ -126,25 +148,79 @@ export default function GamesScreen({ navigation }: any) {
       />
 
       {/* filter bar */}
-      {genres.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginBottom: 14 }}
-        >
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <FilterChip label="All" active={filter === null} onPress={() => setFilter(null)} />
-            {genres.map((g) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginBottom: 14 }}
+      >
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <FilterChip label="All" active={filter === null} onPress={() => setFilter(null)} />
+          {platforms.map((p) => (
+            <FilterChip
+              key={p}
+              label={splitTag(p).value}
+              active={filter === p}
+              onPress={() => setFilter(filter === p ? null : p)}
+            />
+          ))}
+          <FilterChip
+            label={
+              filter && !platforms.includes(filter)
+                ? `🔍 ${splitTag(filter).value}`
+                : "🔍 Filter"
+            }
+            active={filter != null && !platforms.includes(filter)}
+            onPress={() => setTagModal(true)}
+          />
+        </View>
+      </ScrollView>
+
+      {/* all-tags filter modal */}
+      <Modal
+        visible={tagModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTagModal(false)}
+      >
+        <Pressable style={ft.overlay} onPress={() => setTagModal(false)}>
+          <Pressable style={ft.sheet} onPress={() => {}}>
+            <View style={ft.sheetHeader}>
+              <Text style={ft.sheetTitle}>Filter by tag</Text>
+              <Pressable onPress={() => setTagModal(false)}>
+                <Text style={{ color: C.accent, fontSize: 14 }}>Done</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }}>
               <FilterChip
-                key={g}
-                label={splitTag(g).value}
-                active={filter === g}
-                onPress={() => setFilter(filter === g ? null : g)}
+                label="Clear filter"
+                active={filter === null}
+                onPress={() => {
+                  setFilter(null);
+                  setTagModal(false);
+                }}
               />
-            ))}
-          </View>
-        </ScrollView>
-      )}
+              {tagGroups.map(({ type, tags }) => (
+                <View key={type} style={{ marginTop: 14 }}>
+                  <Text style={ft.groupTitle}>{type.toUpperCase()}</Text>
+                  <View style={ft.chipWrap}>
+                    {tags.map((tag) => (
+                      <FilterChip
+                        key={tag}
+                        label={splitTag(tag).value}
+                        active={filter === tag}
+                        onPress={() => {
+                          setFilter(filter === tag ? null : tag);
+                          setTagModal(false);
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Played Today (hidden while searching) */}
       {!searching && (
@@ -253,6 +329,44 @@ export function FilterChip({
     </Pressable>
   );
 }
+
+const ft = {
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end" as const,
+  },
+  sheet: {
+    backgroundColor: C.bgSecondary,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  sheetHeader: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const,
+    marginBottom: 8,
+  },
+  sheetTitle: {
+    color: C.textPrimary,
+    fontSize: 17,
+    fontWeight: "700" as const,
+  },
+  groupTitle: {
+    color: C.textMuted,
+    fontSize: 11,
+    fontWeight: "600" as const,
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  chipWrap: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 6,
+  },
+};
 
 const t = {
   dropZone: {

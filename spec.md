@@ -8,10 +8,10 @@
 
 | State | Rule |
 |---|---|
-| **Current** | Last played within the current window (default: this calendar year; user-switchable to N days) |
+| **Current** | Last played **or started** within the current window (default: this calendar year; user-switchable to N days). The window is checked against the most recent of `last_played` and `start_date` |
 | **Recently Played** | Last played within the recent window (default 14 days; configurable). Shown separately on the Games screen; **mutually exclusive with Current** — a game appears in only one section |
-| **Backlog (started)** | Has playtime or `last_played_override` but not within current window |
-| **Backlog** | No sessions and no imported time |
+| **Backlog (started)** | Has playtime, `last_played_override`, or a `start_date`, but not within the current window |
+| **Backlog** | No sessions, no imported time, and no start date |
 | **On Hold** | Manual flag (requires a reason note). Overrides drift. Shown at the bottom of game detail, above Delete |
 | **Completed** | `completed_at` set, or progress ≥ 100% |
 
