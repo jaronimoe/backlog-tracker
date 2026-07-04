@@ -23,6 +23,8 @@ export interface Game {
   walkthrough_url: string | null;
   walkthrough_text: string | null;
   walkthrough_position: number;
+  recap_text: string | null;
+  recap_key: string | null;
 }
 
 export interface Session {

@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { C } from "../theme";
 import { Btn, Field, Input } from "../components/ui";
-import { getSetting, setSetting, SETTINGS } from "../db/database";
+import { getSetting, setSetting, SETTINGS, LLM_DEFAULTS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
+import { saveLlmConfig, verifyLlm } from "../services/llm";
 import { pickAndImport, shareExport } from "../services/exportImport";
 import { useNavigation } from "@react-navigation/native";
 import { pickAndStartCsvImport } from "../services/csvImport";
@@ -23,6 +24,32 @@ export default function SettingsScreen() {
   const [steamResync, setSteamResync] = useState(false);
 
   const [verifying, setVerifying] = useState(false);
+
+  const [llmToken, setLlmToken] = useState(getSetting(SETTINGS.llmToken, ""));
+  const [llmBaseUrl, setLlmBaseUrl] = useState(getSetting(SETTINGS.llmBaseUrl, LLM_DEFAULTS.baseUrl));
+  const [llmModel, setLlmModel] = useState(getSetting(SETTINGS.llmModel, LLM_DEFAULTS.model));
+  const [llmBusy, setLlmBusy] = useState(false);
+
+  const saveLlm = async () => {
+    saveLlmConfig(llmToken, llmBaseUrl, llmModel);
+    if (!llmToken.trim()) {
+      Alert.alert("Saved", "AI recap disabled (no token).");
+      return;
+    }
+    setLlmBusy(true);
+    try {
+      await verifyLlm({
+        token: llmToken.trim(),
+        baseUrl: (llmBaseUrl.trim() || LLM_DEFAULTS.baseUrl),
+        model: llmModel.trim() || LLM_DEFAULTS.model,
+      });
+      Alert.alert("Saved", "Model reachable ✓");
+    } catch (e: any) {
+      Alert.alert("Model test failed", `Settings were saved, but the test call failed:\n\n${String(e?.message ?? e)}`);
+    } finally {
+      setLlmBusy(false);
+    }
+  };
 
   const save = async () => {
     setSetting(SETTINGS.recentDays, recentDays || "14");
@@ -84,6 +111,26 @@ export default function SettingsScreen() {
       </Field>
 
       <Btn label={verifying ? "Verifying IGDB…" : "Save settings"} onPress={save} style={{ marginBottom: 30 }} />
+
+      <Text style={h.title}>AI recap (“Where was I?”)</Text>
+      <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+        On-demand. On a walkthrough-tracked game, generates a short recap of
+        where you left off from the walkthrough text up to your marked position.
+        Default is GitHub Models (free, rate-limited): create a fine-grained
+        token at github.com/settings/personal-access-tokens with Account
+        permission “Models: read-only”. Any OpenAI-compatible endpoint works
+        too — just change the base URL and model.
+      </Text>
+      <Field label="API token">
+        <Input value={llmToken} onChangeText={setLlmToken} autoCapitalize="none" secureTextEntry placeholder="github_pat_…" />
+      </Field>
+      <Field label="Base URL (OpenAI-compatible, no /chat/completions)">
+        <Input value={llmBaseUrl} onChangeText={setLlmBaseUrl} autoCapitalize="none" placeholder={LLM_DEFAULTS.baseUrl} />
+      </Field>
+      <Field label="Model">
+        <Input value={llmModel} onChangeText={setLlmModel} autoCapitalize="none" placeholder={LLM_DEFAULTS.model} />
+      </Field>
+      <Btn label={llmBusy ? "Testing model…" : "Save & test model"} onPress={saveLlm} style={{ marginBottom: 30 }} />
 
       <Text style={h.title}>Backup & Sync</Text>
       <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>

@@ -107,6 +107,13 @@ const MIGRATIONS: string[][] = [
     )`,
     `CREATE INDEX IF NOT EXISTS idx_external_game ON game_external_ids(game_id)`,
   ],
+  // v3 — cached "Where was I?" recap (LLM). recap_key ties the cached text
+  // to the position + walkthrough content it was generated from, so a stale
+  // recap is transparently regenerated when either changes.
+  [
+    `ALTER TABLE games ADD COLUMN recap_text TEXT`,
+    `ALTER TABLE games ADD COLUMN recap_key TEXT`,
+  ],
 ];
 
 export function migrate() {
@@ -153,4 +160,13 @@ export const SETTINGS = {
   igdbClientSecret: "igdb_client_secret",
   steamApiKey: "steam_api_key",
   steamId: "steam_id", // SteamID64
+  // LLM "Where was I?" recap. Defaults target GitHub Models (free, rate-limited).
+  llmToken: "llm_token", // GitHub fine-grained PAT (Models: read) or any compatible key
+  llmBaseUrl: "llm_base_url", // OpenAI-compatible base, no trailing /chat/completions
+  llmModel: "llm_model", // e.g. openai/gpt-4.1
+};
+
+export const LLM_DEFAULTS = {
+  baseUrl: "https://models.github.ai/inference",
+  model: "openai/gpt-4.1",
 };

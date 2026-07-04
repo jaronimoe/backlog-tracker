@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -42,6 +43,7 @@ import {
   updateGame,
 } from "../db/repo";
 import { fmtMinutes } from "../logic/derive";
+import { canRecap, getRecap, llmConfigured } from "../services/llm";
 import {
   GameWithMeta,
   Milestone,
@@ -92,6 +94,10 @@ export default function GameDetailScreen({ route, navigation }: any) {
   const [manualPct, setManualPct] = useState("");
   const [wtText, setWtText] = useState("");
   const [wtEditing, setWtEditing] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [recapText, setRecapText] = useState<string | null>(null);
+  const [recapBusy, setRecapBusy] = useState(false);
+  const [recapErr, setRecapErr] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     const g = getGame(id);
@@ -125,6 +131,34 @@ export default function GameDetailScreen({ route, navigation }: any) {
       setOnHold(id, true, holdNote.trim());
       setHoldNote("");
       reload();
+    }
+  };
+
+  const runRecap = async (force: boolean) => {
+    if (!game) return;
+    if (!llmConfigured()) {
+      Alert.alert(
+        "Set up AI recap",
+        "Add an API token in Settings → AI recap first.",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Open Settings", onPress: () => navigation.navigate("Tabs", { screen: "Settings" }) },
+        ]
+      );
+      return;
+    }
+    setRecapOpen(true);
+    setRecapBusy(true);
+    setRecapErr(null);
+    if (force) setRecapText(null);
+    try {
+      const r = await getRecap(game, force);
+      setRecapText(r.text);
+      if (!r.cached) reload();
+    } catch (e: any) {
+      setRecapErr(String(e?.message ?? e));
+    } finally {
+      setRecapBusy(false);
     }
   };
 
@@ -386,6 +420,13 @@ export default function GameDetailScreen({ route, navigation }: any) {
               />
             </View>
           </Field>
+          {canRecap(game) && (
+            <Btn
+              label="🧭 Where was I?"
+              onPress={() => runRecap(false)}
+              style={{ marginBottom: 14 }}
+            />
+          )}
           <Field label="Walkthrough text (paste the relevant parts — fluff hurts progress tracking)">
             {wtEditing ? (
               <>
@@ -515,6 +556,15 @@ export default function GameDetailScreen({ route, navigation }: any) {
           onClose={(changed) => { setEditOpen(false); if (changed) reload(); }}
         />
       )}
+
+      <RecapModal
+        visible={recapOpen}
+        busy={recapBusy}
+        text={recapText}
+        error={recapErr}
+        onRegenerate={() => runRecap(true)}
+        onClose={() => setRecapOpen(false)}
+      />
     </ScrollView>
   );
 }
@@ -640,6 +690,56 @@ function EditGameModal({
 }
 
 /** Paragraph-based reader: tap a paragraph to mark "I stopped here". */
+function RecapModal({
+  visible,
+  busy,
+  text,
+  error,
+  onRegenerate,
+  onClose,
+}: {
+  visible: boolean;
+  busy: boolean;
+  text: string | null;
+  error: string | null;
+  onRegenerate: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={m.overlay} onPress={onClose}>
+        <Pressable style={m.modal} onPress={() => {}}>
+          <Text style={m.title}>🧭 Where was I?</Text>
+          <Text style={m.sub}>From your walkthrough, up to where you stopped.</Text>
+          {busy ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color={C.progressFill} />
+              <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 10 }}>
+                Reading your walkthrough…
+              </Text>
+            </View>
+          ) : error ? (
+            <Text style={{ color: C.accent, fontSize: 13, lineHeight: 20 }}>{error}</Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 340 }}>
+              <Text style={{ color: C.textSecondary, fontSize: 14, lineHeight: 21 }}>{text}</Text>
+            </ScrollView>
+          )}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+            <Btn
+              label="Regenerate"
+              kind="secondary"
+              onPress={onRegenerate}
+              style={{ flex: 1, opacity: busy ? 0.5 : 1 }}
+            />
+            <Btn label="Done" onPress={onClose} style={{ flex: 1 }} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function WalkthroughReader({
   text,
   position,

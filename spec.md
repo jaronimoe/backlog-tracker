@@ -141,6 +141,7 @@ Fuzzy hours (`20?`, `21.5`) parsed correctly. Quoted fields with embedded commas
 - Played games processed first (so canonical entries exist before their remastered duplicates try to merge).
 - Never-played games (0 minutes) get `status:unplayed` tag.
 - Idempotent: re-run picks up new purchases, skips everything already linked.
+- Optional **Re-sync playtime** checkbox (Settings, beside the import button): when checked, already-linked games are refreshed instead of skipped — `imported_minutes` updated to the current Steam total (queue shows the delta, e.g. `+3h`) and `last_played_override` bumped if Steam reports a more recent session. Manually logged sessions are untouched. Unchecked (default) keeps the skip-only behaviour above.
 
 ### JSON backup ✅
 Full export / import of all tables as JSON. All tables including `game_external_ids` are included. Safe for cross-device migration and manual backups.
@@ -172,6 +173,7 @@ Only the value portion renders in the UI. Typed tags sort before plain tags. Eac
 | Genre blocker threshold | 1 | |
 | IGDB Client ID + Secret | — | Verified against Twitch OAuth on save |
 | Steam Web API key + SteamID64 | — | Saved before import attempt |
+| Steam "Re-sync playtime" | Off | Per-import checkbox, not persisted |
 
 ---
 
@@ -184,9 +186,34 @@ Only the value portion renders in the UI. Typed tags sort before plain tags. Eac
 
 ---
 
+## AI recap — “Where was I?” ✅
+
+On-demand LLM recap for **walkthrough-tracked games**: summarizes what the
+player just did and where they are, so they can resume after a break.
+
+- **Scope:** walkthrough progress method only, with walkthrough text pasted and
+  a position marked. Button lives on the Walkthrough tab (`🧭 Where was I?`).
+  Dropped the LLM “What's next?” hint — the walkthrough *is* what's next; the
+  player just reads ahead.
+- **Grounding:** we send **only the walkthrough excerpt up to the marked
+  position** (never the whole guide, never anything ahead — no spoilers, low
+  hallucination). System prompt forbids inventing facts or revealing what
+  follows.
+- **Provider:** OpenAI-compatible endpoint configured in Settings → AI recap
+  (token + base URL + model). Defaults to **GitHub Models** (`gpt-4.1`, free,
+  rate-limited) via a fine-grained PAT with Account permission *Models:
+  read-only*. Swapping to OpenRouter / a paid gateway / local Ollama is
+  config-only, no code change. A “Save & test model” button does a PONG probe.
+- **Token limit:** GitHub Models caps a request at **8000 input tokens** for
+  gpt-4.1 (measured). We budget ~6000 and window the excerpt to
+  `CONTEXT_CHAR_BUDGET` (tail-of-excerpt, snapped to a paragraph boundary).
+- **Caching:** recap stored on the game row (`recap_text` + `recap_key`, schema
+  v3). Key = position + walkthrough length + content hash, so reopening the
+  game is free and the recap silently regenerates when position/text change.
+  Manual **Regenerate** button in the recap modal.
+
 ## Phase 2 (not yet started)
 
-- 🔲 LLM story recap ("Where was I?") + "What's next?" hint — local Ollama / MLX Swift
 - 🔲 GameFAQs guide list fetching (web scraping, ToS risk)
 - 🔲 HowLongToBeat time-based progress fallback
 - 🔲 Visualizations: "The Juggler" animated screensaver + "The Weightlifter"
