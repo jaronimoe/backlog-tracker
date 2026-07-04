@@ -5,6 +5,7 @@ import { Btn, Field, Input } from "../components/ui";
 import { getSetting, setSetting, SETTINGS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
 import { pickAndImport, shareExport } from "../services/exportImport";
+import { pickAndImportCsv } from "../services/csvImport";
 
 export default function SettingsScreen() {
   const [recentDays, setRecentDays] = useState(getSetting(SETTINGS.recentDays, "14"));
@@ -97,6 +98,32 @@ export default function SettingsScreen() {
               if (n >= 0) Alert.alert("Imported", `${n} games restored.`);
             } catch (e) {
               Alert.alert("Import failed", String(e));
+            }
+          }}
+        />
+      </View>
+
+      <Text style={h.title}>Bulk add from CSV</Text>
+      <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+        Adds games from a CSV with columns: title, original_entry, platform,
+        year_started, year_completed, status, hours, notes. Existing titles are
+        skipped — safe to run multiple times.
+      </Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Btn
+          label="Import games CSV"
+          kind="secondary"
+          onPress={async () => {
+            try {
+              const r = await pickAndImportCsv();
+              if (r == null) return;
+              Alert.alert(
+                "CSV import done",
+                `${r.added} games added (${r.completed} completed, ${r.onHold} on hold).\n` +
+                  `${r.skippedDuplicates} skipped as duplicates, ${r.skippedInvalid} invalid rows.`
+              );
+            } catch (e) {
+              Alert.alert("CSV import failed", String(e));
             }
           }}
         />
