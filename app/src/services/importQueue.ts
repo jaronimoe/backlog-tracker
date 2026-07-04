@@ -107,6 +107,55 @@ export function startImport(
   void run(processRow); // fire and forget; errors land in the store
 }
 
+/**
+ * Async variant for imports whose per-row work involves network calls
+ * (e.g. IGDB metadata sync). Rows run sequentially; the row processor is
+ * responsible for its own transactions and rate limiting.
+ */
+export function startAsyncImport(
+  label: string,
+  titles: string[],
+  processRow: (index: number) => Promise<RowResult>
+) {
+  if (state.running) throw new Error("An import is already running");
+  state = {
+    ...IDLE,
+    active: true,
+    running: true,
+    label,
+    items: titles.map((t) => ({ title: t, status: "pending" as const })),
+  };
+  notify();
+  void runAsync(processRow); // fire and forget; errors land in the store
+}
+
+async function runAsync(processRow: (index: number) => Promise<RowResult>) {
+  try {
+    await yieldToUI();
+    const n = state.items.length;
+    for (let i = 0; i < n; i++) {
+      const r = await processRow(i);
+      const nextItems = [...state.items];
+      nextItems[i] = { ...nextItems[i], status: r.status, detail: r.detail };
+      setState({
+        items: nextItems,
+        processed: i + 1,
+        added: state.added + (r.status === "added" ? 1 : 0),
+        merged: state.merged + (r.status === "merged" ? 1 : 0),
+        skippedDuplicates:
+          state.skippedDuplicates + (r.status === "duplicate" ? 1 : 0),
+        skippedInvalid: state.skippedInvalid + (r.status === "invalid" ? 1 : 0),
+      });
+    }
+    setState({ running: false });
+    setTimeout(() => {
+      if (!state.running) dismissImport();
+    }, DISMISS_AFTER_MS);
+  } catch (e) {
+    setState({ running: false, error: String(e) });
+  }
+}
+
 async function run(processRow: (index: number) => RowResult) {
   try {
     await yieldToUI(); // let the Import tab appear before work starts

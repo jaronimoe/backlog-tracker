@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -44,6 +45,7 @@ import {
 } from "../db/repo";
 import { fmtMinutes } from "../logic/derive";
 import { canRecap, getRecap, llmConfigured } from "../services/llm";
+import { igdbConfigured, IgdbGame, searchIgdb } from "../services/igdb";
 import {
   GameWithMeta,
   Milestone,
@@ -86,6 +88,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
   const [tab, setTab] = useState<"progress" | "sessions" | "notes" | "walkthrough">("progress");
   const [logOpen, setLogOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [newMilestone, setNewMilestone] = useState("");
   const [newStretch, setNewStretch] = useState(false);
@@ -119,6 +122,22 @@ export default function GameDetailScreen({ route, navigation }: any) {
   const checkCompletion = () => {
     if (maybeMarkCompleted(id)) promptCompletion(id);
     reload();
+  };
+
+  const setMethod = (m: ProgressMethod) => {
+    updateGame(id, { progress_method: m });
+    reload();
+  };
+
+  const openCoverPicker = () => {
+    if (!igdbConfigured()) {
+      Alert.alert(
+        "IGDB not configured",
+        "Add your IGDB (Twitch) credentials in Settings to search for cover art. You can also set a cover URL via Edit."
+      );
+      return;
+    }
+    setCoverOpen(true);
   };
 
   const toggleHold = () => {
@@ -176,10 +195,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
     ]);
   };
 
-  const setMethod = (m: ProgressMethod) => {
-    updateGame(id, { progress_method: m });
-    reload();
-  };
+
 
   return (
     <ScrollView
@@ -188,7 +204,12 @@ export default function GameDetailScreen({ route, navigation }: any) {
     >
       {/* header */}
       <View style={{ flexDirection: "row", gap: 16, marginBottom: 16 }}>
-        <Cover game={game} w={90} h={120} />
+        <Pressable onPress={openCoverPicker} hitSlop={6}>
+          <Cover game={game} w={90} h={120} />
+          <Text style={{ color: C.textMuted, fontSize: 9, textAlign: "center", marginTop: 4 }}>
+            tap to change
+          </Text>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
             <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: "700", flex: 1 }}>
@@ -557,6 +578,14 @@ export default function GameDetailScreen({ route, navigation }: any) {
         />
       )}
 
+      {coverOpen && (
+        <CoverPickerModal
+          game={game}
+          visible={coverOpen}
+          onClose={(changed) => { setCoverOpen(false); if (changed) reload(); }}
+        />
+      )}
+
       <RecapModal
         visible={recapOpen}
         busy={recapBusy}
@@ -682,6 +711,120 @@ function EditGameModal({
           <View style={m.actions}>
             <Btn label="Cancel" kind="secondary" onPress={() => onClose(false)} />
             <Btn label="Save" onPress={save} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/** Pick a new cover from IGDB search results (tap the cover art to open). */
+function CoverPickerModal({
+  game,
+  visible,
+  onClose,
+}: {
+  game: GameWithMeta;
+  visible: boolean;
+  onClose: (changed: boolean) => void;
+}) {
+  const [query, setQuery] = useState(game.title);
+  const [results, setResults] = useState<IgdbGame[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const search = useCallback(async (q: string) => {
+    if (!q.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await searchIgdb(q.trim());
+      setResults(r.filter((x) => x.coverUrl));
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // auto-search with the game title when the modal opens
+  useEffect(() => {
+    void search(game.title);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pick = (r: IgdbGame) => {
+    updateGame(game.id, { cover_url: r.coverUrl });
+    onClose(true);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => onClose(false)}>
+      <View style={m.overlay}>
+        <View style={[m.modal, { maxHeight: "88%" }]}>
+          <Text style={m.title}>Change cover</Text>
+          <Text style={m.sub}>Covers from IGDB — tap one to use it.</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+            <Input
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search IGDB..."
+              style={{ flex: 1 }}
+              onSubmitEditing={() => search(query)}
+            />
+            <Btn label={busy ? "…" : "🔍"} kind="secondary" onPress={() => search(query)} />
+          </View>
+
+          {error ? (
+            <Text style={{ color: C.accent, fontSize: 12, marginBottom: 10 }}>{error}</Text>
+          ) : busy ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color={C.progressFill} />
+            </View>
+          ) : results.length === 0 ? (
+            <Text style={{ color: C.textMuted, fontSize: 12, marginBottom: 10 }}>
+              No covers found — try a different search.
+            </Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 400 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {results.map((r) => (
+                  <Pressable key={r.id} onPress={() => pick(r)} style={{ width: 90 }}>
+                    <Image
+                      source={{ uri: r.coverUrl! }}
+                      style={{
+                        width: 90,
+                        height: 120,
+                        borderRadius: 6,
+                        backgroundColor: C.bgCard,
+                        borderWidth: game.cover_url === r.coverUrl ? 2 : 0,
+                        borderColor: C.progressFill,
+                      }}
+                    />
+                    <Text
+                      style={{ color: C.textSecondary, fontSize: 10, marginTop: 3 }}
+                      numberOfLines={2}
+                    >
+                      {r.name}
+                      {r.releaseYear ? ` (${r.releaseYear})` : ""}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          <View style={m.actions}>
+            {game.cover_url ? (
+              <Btn
+                label="Remove cover"
+                kind="secondary"
+                onPress={() => {
+                  updateGame(game.id, { cover_url: null });
+                  onClose(true);
+                }}
+              />
+            ) : null}
+            <Btn label="Cancel" kind="secondary" onPress={() => onClose(false)} />
           </View>
         </View>
       </View>

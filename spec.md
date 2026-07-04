@@ -38,6 +38,15 @@ State is computed by `deriveGroup()` in `src/logic/derive.ts`. Never stored.
 - Base playtime (imported minutes, outside logged sessions)
 - Completed date, rating (1–10), final note
 
+**Cover art** can also be changed by tapping the cover image itself on game
+detail ("tap to change" hint underneath). Opens an IGDB search modal
+(auto-searched on the game's title, editable query) showing all matching
+covers in a grid; tap one to apply it, or **Remove cover** to fall back to
+the initials placeholder. Requires IGDB credentials (Settings) — otherwise
+prompts to configure them or use the Edit modal's cover URL field instead.
+This only changes the art; it does not touch tags, year, or the IGDB link,
+so a hand-picked cover is never overwritten by the metadata sync below.
+
 ---
 
 ## Progress tracking ✅
@@ -142,6 +151,32 @@ Fuzzy hours (`20?`, `21.5`) parsed correctly. Quoted fields with embedded commas
 - Never-played games (0 minutes) get `status:unplayed` tag.
 - Idempotent: re-run picks up new purchases, skips everything already linked.
 - Optional **Re-sync playtime** checkbox (Settings, beside the import button): when checked, already-linked games are refreshed instead of skipped — `imported_minutes` updated to the current Steam total (queue shows the delta, e.g. `+3h`) and `last_played_override` bumped if Steam reports a more recent session. Manually logged sessions are untouched. Unchecked (default) keeps the skip-only behaviour above.
+
+### IGDB metadata sync ✅
+
+Bulk-added games (CSV import, Steam import, title-only manual adds) have no
+cover art, genre tags, or release year. **Settings → Sync art & tags from
+IGDB** fills in whatever is missing, queued on the same non-blocking Import
+tab.
+
+- **Candidates:** games not yet linked to an IGDB id (`game_external_ids
+  source='igdb'`) AND missing at least one of cover / release year / genre
+  tags. Games picked via the IGDB search on Add are already linked and
+  skipped. Re-running is safe — every synced game gets linked, so nothing is
+  looked up twice.
+- **Matching:** exact normalized-title match preferred among IGDB search
+  results; otherwise the top result is used and flagged `≈` in the log so
+  mismatches are easy to spot.
+- **Fills only what's missing:** existing cover (e.g. Steam capsule art),
+  release year, and platform tags are never overwritten. `genre:` tags added
+  if none exist; `platform:` tags added only if none exist (so a Steam import
+  keeps just `platform:steam` rather than gaining every platform the game
+  ever shipped on).
+- **Rate-limited** to stay under IGDB's 4 req/s free-tier cap; aborts after 3
+  consecutive lookup failures (e.g. bad credentials) instead of grinding
+  through the whole library.
+- Queue statuses: 🔗 merged (metadata applied, e.g. `+cover +5 tags`), ⏭
+  duplicate (nothing was missing), ⚠ invalid (no IGDB match / lookup failed).
 
 ### JSON backup ✅
 Full export / import of all tables as JSON. All tables including `game_external_ids` are included. Safe for cross-device migration and manual backups.

@@ -4,6 +4,7 @@ import { C } from "../theme";
 import { Btn, Field, Input } from "../components/ui";
 import { getSetting, setSetting, SETTINGS, LLM_DEFAULTS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
+import { startIgdbMetadataSync } from "../services/igdbSync";
 import { saveLlmConfig, verifyLlm } from "../services/llm";
 import { pickAndImport, shareExport } from "../services/exportImport";
 import { useNavigation } from "@react-navigation/native";
@@ -22,6 +23,7 @@ export default function SettingsScreen() {
   const [steamId, setSteamId] = useState(getSetting(SETTINGS.steamId, ""));
   const [steamBusy, setSteamBusy] = useState(false);
   const [steamResync, setSteamResync] = useState(false);
+  const [igdbSyncBusy, setIgdbSyncBusy] = useState(false);
 
   const [verifying, setVerifying] = useState(false);
 
@@ -109,6 +111,34 @@ export default function SettingsScreen() {
       <Field label="Client Secret">
         <Input value={igdbSecret} onChangeText={setIgdbSecret} autoCapitalize="none" secureTextEntry />
       </Field>
+      <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+        Bulk-added games (CSV, Steam, title-only) are missing cover art, tags
+        and release year. Sync fills in whatever is missing from IGDB — games
+        that already have their metadata are skipped, so it's safe to re-run.
+      </Text>
+      <Btn
+        label={igdbSyncBusy ? "Starting sync…" : "Sync art & tags from IGDB"}
+        kind="secondary"
+        onPress={() => {
+          setIgdbSyncBusy(true);
+          try {
+            const n = startIgdbMetadataSync();
+            if (n === 0) {
+              Alert.alert(
+                "Nothing to sync",
+                "All games already have their IGDB metadata."
+              );
+            } else {
+              setTimeout(() => navigation.navigate("Import"), 150);
+            }
+          } catch (e: any) {
+            Alert.alert("IGDB sync failed", String(e?.message ?? e));
+          } finally {
+            setIgdbSyncBusy(false);
+          }
+        }}
+        style={{ marginBottom: 14 }}
+      />
 
       <Btn label={verifying ? "Verifying IGDB…" : "Save settings"} onPress={save} style={{ marginBottom: 30 }} />
 
