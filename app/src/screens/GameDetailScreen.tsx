@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Linking from "expo-linking";
+import * as Clipboard from "expo-clipboard";
 import { C } from "../theme";
 import {
   Btn,
@@ -462,13 +463,30 @@ export default function GameDetailScreen({ route, navigation }: any) {
           <Field label="Walkthrough text (paste the relevant parts — fluff hurts progress tracking)">
             {wtEditing ? (
               <>
+                <Btn
+                  label="📋 Paste from clipboard"
+                  kind="secondary"
+                  style={{ marginBottom: 8 }}
+                  onPress={async () => {
+                    // Reads the clipboard directly instead of relying on the
+                    // native long-press "Paste" gesture inside the TextInput —
+                    // that gesture silently truncates very large pastes (tens
+                    // of thousands of chars) on both iOS and Android. Going
+                    // straight through the clipboard API has no such limit.
+                    const clip = await Clipboard.getStringAsync();
+                    if (clip) setWtText(clip);
+                  }}
+                />
                 <Input
                   value={wtText}
                   onChangeText={setWtText}
                   multiline
                   style={{ minHeight: 160, textAlignVertical: "top" }}
-                  placeholder="Paste walkthrough text here..."
+                  placeholder="Paste walkthrough text here, or use the clipboard button above for long guides..."
                 />
+                <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>
+                  {wtText.length.toLocaleString()} characters
+                </Text>
                 <Btn
                   label="Save text"
                   style={{ marginTop: 8 }}
