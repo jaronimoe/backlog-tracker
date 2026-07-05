@@ -6,6 +6,7 @@ import {
   addTag,
   ensureMarkerSession,
   isNeverPlayed,
+  windowConfig,
 } from "../db/repo";
 import { fmtMinutes, isoDate } from "../logic/derive";
 import { cleanTitle, normalizeTitle } from "../logic/normalize";
@@ -160,7 +161,8 @@ function importSteamRow(
   }
 
   // ---- add as new game ----
-  const unplayed = g.playtime_forever === 0;
+  // Below the played threshold (default 29 min) = not really played yet.
+  const unplayed = g.playtime_forever <= windowConfig().playedThreshold;
   const tags = ["source:steam", "platform:steam"];
   if (unplayed) tags.push("status:unplayed");
 
@@ -206,6 +208,25 @@ function resyncLinked(g: SteamGame, existingId: number): RowResult {
     "SELECT imported_minutes, steam_synced_minutes, last_played_override FROM games WHERE id = ?",
     [existingId]
   )!;
+
+  // Watermark -1 = baseline unknown (game was merged into an entry with
+  // tracked time before v6, so its historical Steam total was deliberately
+  // never counted). Establish the baseline now without attributing anything —
+  // only playtime accrued *after* this sync will become dated sessions.
+  if (row.steam_synced_minutes < 0) {
+    db.runSync("UPDATE games SET steam_synced_minutes = ? WHERE id = ?", [
+      g.playtime_forever,
+      existingId,
+    ]);
+    if (lastPlayed && (!row.last_played_override || lastPlayed > row.last_played_override)) {
+      db.runSync("UPDATE games SET last_played_override = ? WHERE id = ?", [
+        lastPlayed,
+        existingId,
+      ]);
+    }
+    if (lastPlayed) ensureMarkerSession(existingId, lastPlayed, STEAM_MARKER_NOTE);
+    return { status: "merged", detail: "baseline set — new playtime tracked from now" };
+  }
 
   // Delta is measured against the last total we saw from Steam (the watermark),
   // so we only ever count *new* playtime once.

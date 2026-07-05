@@ -72,6 +72,7 @@ export function streak(
 export interface WindowConfig {
   recentDays: number; // Recently Played window
   currentWindow: "year" | number; // 'year' or number of days
+  playedThreshold: number; // total minutes must exceed this to count as "played" (default 29)
 }
 
 export function deriveGroup(
@@ -84,7 +85,11 @@ export function deriveGroup(
 ): StateGroup {
   if (progress >= 100 || game.completed_at) return "completed";
   if (game.on_hold) return "on_hold";
-  const started = totalMinutes > 0 || lastPlayed != null || game.start_date != null;
+  // "Played" requires more than the threshold of total minutes (default 29,
+  // so 30m counts) — a brief boot-up doesn't move a game out of the backlog.
+  // An explicitly set start date is a deliberate "I started this" and counts too.
+  const started =
+    totalMinutes > cfg.playedThreshold || game.start_date != null;
   if (!started) return "backlog";
   // Most recent activity signal: a logged/overridden play date or the start date.
   const refDate =

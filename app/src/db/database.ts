@@ -133,6 +133,18 @@ const MIGRATIONS: string[][] = [
     `UPDATE games SET steam_synced_minutes = imported_minutes
        WHERE id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`,
   ],
+  // v7 — sentinel for unknown Steam baselines. Games merged from Steam into an
+  // entry that already had tracked time got imported_minutes = 0 by design
+  // (anti-double-count merge policy), so v6 seeded their watermark to 0 even
+  // though their real Steam total is unknown and likely large. A re-sync would
+  // then dump the entire historical total as one giant dated session. Mark them
+  // with watermark -1 = "establish baseline on next sync, don't attribute".
+  [
+    `UPDATE games SET steam_synced_minutes = -1
+       WHERE steam_synced_minutes = 0 AND imported_minutes = 0
+         AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')
+         AND id IN (SELECT game_id FROM sessions GROUP BY game_id HAVING SUM(minutes) > 0)`,
+  ],
 ];
 
 export function migrate() {
@@ -174,6 +186,7 @@ export const SETTINGS = {
   recentDays: "recent_days", // Recently Played window (default 14)
   currentWindow: "current_window", // 'year' | number of days (default 'year')
   streakGrace: "streak_grace", // 1|2|3 (default 1)
+  playedThreshold: "played_min_minutes", // total minutes must exceed this to count as "played" (default 29)
   genreBlockThreshold: "genre_block_threshold", // default 1
   igdbClientId: "igdb_client_id",
   igdbClientSecret: "igdb_client_secret",

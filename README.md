@@ -19,8 +19,8 @@ Built with **React Native + Expo**, targeting iOS and Android.
 | State | Rule |
 |---|---|
 | **Current** | Played within the current window (default: this calendar year) |
-| **Backlog (started)** | Has playtime but not played within current window |
-| **Backlog** | No sessions and no imported time |
+| **Backlog (started)** | Played more than the threshold (default 29 min) but not within current window |
+| **Backlog** | Total playtime at or below the played threshold and no start date set |
 | **On Hold** | Manual flag — requires a reason note |
 | **Completed** | Progress ≥ 100% or `completed_at` date set |
 
@@ -87,6 +87,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 | Recently Played window | 14 days | |
 | Current window | This year | Can switch to N days |
 | Streak grace period | 1 day | 1/2/3 day gap before streak resets |
+| Played threshold | 29 min | Total minutes must exceed this to count as "played" (30 min counts) |
 | Genre blocker threshold | 1 | Warn when ≥ N games of same genre active |
 | IGDB Client ID / Secret | — | From Twitch dev console; verified on save |
 | Steam Web API key / SteamID64 | — | For Steam library import |

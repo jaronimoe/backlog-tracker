@@ -28,6 +28,7 @@ export default function SettingsScreen() {
   const [recentDays, setRecentDays] = useState(getSetting(SETTINGS.recentDays, "14"));
   const [currentWindow, setCurrentWindow] = useState(getSetting(SETTINGS.currentWindow, "year"));
   const [grace, setGrace] = useState(getSetting(SETTINGS.streakGrace, "1"));
+  const [playedMin, setPlayedMin] = useState(getSetting(SETTINGS.playedThreshold, "29"));
   const [threshold, setThreshold] = useState(getSetting(SETTINGS.genreBlockThreshold, "1"));
   const [igdbId, setIgdbId] = useState(getSetting(SETTINGS.igdbClientId, ""));
   const [igdbSecret, setIgdbSecret] = useState(getSetting(SETTINGS.igdbClientSecret, ""));
@@ -69,6 +70,7 @@ export default function SettingsScreen() {
     setSetting(SETTINGS.recentDays, recentDays || "14");
     setSetting(SETTINGS.currentWindow, currentWindow || "year");
     setSetting(SETTINGS.streakGrace, grace || "1");
+    setSetting(SETTINGS.playedThreshold, playedMin || "29");
     setSetting(SETTINGS.genreBlockThreshold, threshold || "1");
     saveIgdbCreds(igdbId, igdbSecret);
     if (igdbId.trim() && igdbSecret.trim()) {
@@ -103,6 +105,9 @@ export default function SettingsScreen() {
       </Field>
       <Field label='Current window — "year" or a number of days'>
         <Input value={currentWindow} onChangeText={setCurrentWindow} autoCapitalize="none" />
+      </Field>
+      <Field label="Counts as played above (minutes) — at or below stays “not yet played”">
+        <Input value={playedMin} onChangeText={setPlayedMin} keyboardType="numeric" />
       </Field>
 
       <Text style={h.title}>Streaks</Text>

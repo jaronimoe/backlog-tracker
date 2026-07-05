@@ -10,8 +10,8 @@
 |---|---|
 | **Current** | Last played **or started** within the current window (default: this calendar year; user-switchable to N days). The window is checked against the most recent of `last_played` and `start_date` |
 | **Recently Played** | Last played within the recent window (default 14 days; configurable). Shown separately on the Games screen; **mutually exclusive with Current** — a game appears in only one section |
-| **Backlog (started)** | Has playtime, `last_played_override`, or a `start_date`, but not within the current window |
-| **Backlog** | No sessions, no imported time, and no start date |
+| **Backlog (started)** | Total playtime above the played threshold (default 29 min) or a `start_date`, but not within the current window |
+| **Backlog** | Total playtime ≤ played threshold and no `start_date` — a brief boot-up doesn't count as played |
 | **On Hold** | Manual flag (requires a reason note). Overrides drift. Shown at the bottom of game detail, above Delete |
 | **Completed** | `completed_at` set, or progress ≥ 100% |
 
@@ -57,7 +57,10 @@ Three methods per game (switchable):
 2. **Manual %** — direct percentage input.
 3. **Walkthrough position** — paste walkthrough text; mark position; % = position ÷ length.
 
-- 100% triggers a completion prompt (rating / final note).
+- 100% triggers a completion prompt (rating / final note). The auto-set
+  `completed_at` is the game's **last-played date** (you finished it when you
+  last played, not when you ticked the box); falls back to today if the game
+  has no recorded play date. Manual edits via the edit modal are untouched.
 - Progress bar renders gracefully above 100% (gold colour, e.g. "115%").
 
 ---
@@ -78,7 +81,7 @@ Three methods per game (switchable):
 
 ## Genre blocker ✅
 
-Trigger: logging the **first session** of a **never-played** game.
+Trigger: logging a session (with no existing session that day) while the game is still **never-played** (total playtime ≤ played threshold, default 29 min). Since the threshold is checked against the running total rather than a one-time flag, it can in principle re-trigger on an early day if the total is still at/under the threshold — a minor, accepted edge case.
 - Counts active games (Current + Backlog started) sharing ≥1 `genre:` tag.
 - If count ≥ threshold (default 1): non-blocking warning with game list, progress %, last-played. [Start anyway] / [Cancel].
 
@@ -150,10 +153,11 @@ Fuzzy hours (`20?`, `21.5`) parsed correctly. Quoted fields with embedded commas
 - Requires: Steam Web API key + SteamID64; profile "Game details" = Public.
 - Fetches via `IPlayerService/GetOwnedGames` (React Native fetch, no CORS restriction).
 - Played games processed first (so canonical entries exist before their remastered duplicates try to merge).
-- Never-played games (0 minutes) get `status:unplayed` tag.
+- Never-played games (total playtime at or below the played threshold, default 29 min) get `status:unplayed` tag.
 - Idempotent: re-run picks up new purchases, skips everything already linked.
 - Optional **Re-sync playtime** checkbox (Settings, beside the import button): when checked, already-linked games are refreshed instead of skipped — new playtime since the last sync is attributed to a dated session (see "delta attribution" below), the queue shows the delta (e.g. `+3h`), and `last_played_override` is bumped if Steam reports a more recent session. Manually logged sessions are untouched. Unchecked (default) keeps the skip-only behaviour above.
 - **Per-game sync:** a Steam-linked game's detail screen shows a **"Sync playtime from Steam"** button (only when the game has a linked appid). It fetches the library, refreshes just that game (same logic as bulk re-sync), and reports the delta (or "already up to date"). If Steam credentials aren't set it offers to open Settings.
+- **Unknown-baseline sentinel (v7):** games merged from Steam into entries that already had tracked time never got a playtime lump (anti-double-count policy), so their true Steam total is unknown — migration v7 marks them `steam_synced_minutes = -1`. On their first re-sync the current Steam total is recorded as the baseline **without attributing anything** (result: "baseline set"); only playtime accrued after that becomes dated sessions. The pre-v6 backup-restore re-seed applies the same rule (and only runs for exports with `schema_version < 6`).
 - **Playtime watermark + delta attribution:** `imported_minutes` is the *original* Steam lump captured at first import (undated, since Steam exposes no per-day history), frozen thereafter. A separate `steam_synced_minutes` column (migration v6, seeded from `imported_minutes` for existing Steam games) records the last total seen from Steam. On re-sync, `delta = playtime_forever − steam_synced_minutes`; a **positive delta with a known last-played date is logged as a real dated session on that day** (accumulating, note "Last played on Steam"), then the watermark advances. This means playing a game and then syncing shows the new hours on the calendar/stats for that day. Deltas with no reported date (or negative corrections) fold into `imported_minutes` instead. Because the delta is measured against the watermark, new time is counted exactly once and repeated same-day syncs stay correct.
 - **"Last played" marker sessions:** when there's no new playtime to log (delta ≤ 0) but Steam still reports a `rtime_last_played`, a **0-minute marker session** is stamped on that date (`INSERT OR IGNORE` on `UNIQUE(game_id, date)`) so the game still surfaces on its last-played day without adding playtime or clobbering a real logged session. Never-launched games (`rtime_last_played = 0`) get no marker.
 
@@ -210,6 +214,7 @@ Only the value portion renders in the UI. Typed tags sort before plain tags. Eac
 | Recently Played window | 14 days | |
 | Current window | This year | Switchable to N days |
 | Streak grace period | 1 day | 1/2/3 days |
+| Played threshold | 29 min | Total minutes must exceed this to count as "played"; also drives `status:unplayed` on Steam import |
 | Genre blocker threshold | 1 | |
 | IGDB Client ID + Secret | — | Verified against Twitch OAuth on save |
 | Steam Web API key + SteamID64 | — | Saved before import attempt |

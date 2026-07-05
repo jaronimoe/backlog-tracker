@@ -61,12 +61,23 @@ export async function pickAndImport(): Promise<number> {
     }
     // Back-compat: pre-v6 exports lack the Steam watermark. Seed it from the
     // import lump so a first re-sync counts only genuinely new playtime instead
-    // of dumping the whole total onto one day.
-    db.runSync(
-      `UPDATE games SET steam_synced_minutes = imported_minutes
-         WHERE steam_synced_minutes = 0
-           AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`
-    );
+    // of dumping the whole total onto one day. Games with tracked time but no
+    // lump (merge policy skipped their playtime) get the -1 "unknown baseline"
+    // sentinel — mirrors migrations v6+v7. Post-v6 exports carry the real
+    // watermarks (including legitimate zeros), so only patch older exports.
+    if ((data.schema_version ?? 0) < 6) {
+      db.runSync(
+        `UPDATE games SET steam_synced_minutes = imported_minutes
+           WHERE steam_synced_minutes = 0 AND imported_minutes > 0
+             AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`
+      );
+      db.runSync(
+        `UPDATE games SET steam_synced_minutes = -1
+           WHERE steam_synced_minutes = 0 AND imported_minutes = 0
+             AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')
+             AND id IN (SELECT game_id FROM sessions GROUP BY game_id HAVING SUM(minutes) > 0)`
+      );
+    }
   });
   return (data.games ?? []).length;
 }

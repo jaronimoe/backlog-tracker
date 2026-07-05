@@ -23,6 +23,7 @@ export function windowConfig(): WindowConfig {
   return {
     recentDays,
     currentWindow: cw === "year" ? "year" : parseInt(cw, 10),
+    playedThreshold: parseInt(getSetting(SETTINGS.playedThreshold, "29"), 10),
   };
 }
 
@@ -300,17 +301,22 @@ export function startedCompletedInRange(
   return { started, completed };
 }
 
-/** true if this game has never been played (no sessions, no imported time) */
+/**
+ * true if this game hasn't meaningfully been played yet: total time (sessions +
+ * imported) is at or below the played threshold (default 29 min — a quick
+ * boot-up doesn't count as playing).
+ */
 export function isNeverPlayed(gameId: number): boolean {
   const g = db.getFirstSync<{ imported_minutes: number }>(
     "SELECT imported_minutes FROM games WHERE id = ?",
     [gameId]
   );
-  const s = db.getFirstSync<{ n: number }>(
-    "SELECT COUNT(*) n FROM sessions WHERE game_id = ?",
+  const s = db.getFirstSync<{ total: number }>(
+    "SELECT COALESCE(SUM(minutes), 0) total FROM sessions WHERE game_id = ?",
     [gameId]
   );
-  return (g?.imported_minutes ?? 0) === 0 && (s?.n ?? 0) === 0;
+  const total = (g?.imported_minutes ?? 0) + (s?.total ?? 0);
+  return total <= windowConfig().playedThreshold;
 }
 
 // ---------- milestones ----------
@@ -489,13 +495,18 @@ export function genreBlockCheck(gameId: number): GenreBlockHit[] {
 
 // ---------- completion ----------
 
-/** Mark completed "now" if progress just crossed 100 and not yet marked. */
+/**
+ * Mark completed if progress just crossed 100 and not yet marked. Uses the
+ * game's last-played date as the completion date (you finished it when you
+ * last played it, not when you got around to ticking the box); falls back to
+ * today if the game has no recorded play date.
+ */
 export function maybeMarkCompleted(gameId: number): boolean {
   const g = getGame(gameId);
   if (!g) return false;
   if (g.progress >= 100 && !g.completed_at) {
     db.runSync("UPDATE games SET completed_at = ? WHERE id = ?", [
-      playDay(),
+      g.lastPlayed ?? playDay(),
       gameId,
     ]);
     return true; // caller should prompt for rating/final note
