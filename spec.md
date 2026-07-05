@@ -89,8 +89,13 @@ Trigger: logging a session (with no existing session that day) while the game is
 
 ## Calendar ✅
 
-- Month grid; day cells show a dot when sessions exist.
-- Tap a day: list of sessions with game title, duration, note.
+- Month grid; day cells heat-map intensity scales with session minutes. Today's cell has an accent border; the selected day has a subtle border.
+- **Scope control:** tapping the month label scopes the summary to the month; tapping the year label scopes to the full year; tapping a day cell scopes to that day.
+- **Jump to Today button** — resets the calendar to the current month/year and selects today's play-day (respecting the pre-5am roll-over).
+- Left/right arrows navigate months (or years when year-scoped).
+- **Period play-time card** — header shows the label and total minutes for the *currently displayed period* (day / month / year), not the last-tapped day. Day scope lists individual sessions with notes; month/year scope shows per-game aggregated totals sorted by playtime, each row tappable to the game's detail screen.
+- **Summary card** — lists games started and completed within the period. Games that were *both started and completed* in the same period are highlighted in **gold** in both the Started and Completed lists, making it immediately clear which games were fully wrapped up within the window. A legend line appears when any such games exist.
+- Navigation from day scope (← / →) returns to month scope.
 
 ---
 

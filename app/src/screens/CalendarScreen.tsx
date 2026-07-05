@@ -22,6 +22,10 @@ export default function CalendarScreen() {
   const [daySessions, setDaySessions] = useState<
     ReturnType<typeof sessionsForDay>
   >([]);
+  const [periodTotal, setPeriodTotal] = useState(0);
+  const [gameTotals, setGameTotals] = useState<
+    { id: number; title: string; minutes: number }[]
+  >([]);
   const [summary, setSummary] = useState<RangeGameSummary>({
     started: [],
     completed: [],
@@ -55,8 +59,35 @@ export default function CalendarScreen() {
     const totals: Record<string, number> = {};
     for (const r of rows) totals[r.date] = (totals[r.date] ?? 0) + r.minutes;
     setDayTotals(totals);
-    setDaySessions(sessionsForDay(selected));
     const r = range();
+    if (scope === "day") {
+      const s = sessionsForDay(selected);
+      setDaySessions(s);
+      setGameTotals([]);
+      setPeriodTotal(s.reduce((a, x) => a + x.minutes, 0));
+    } else {
+      const periodRows =
+        scope === "month" ? rows : sessionsInRange(r.from, r.to);
+      const byGame = new Map<
+        number,
+        { id: number; title: string; minutes: number }
+      >();
+      for (const s of periodRows) {
+        const e = byGame.get(s.game_id);
+        if (e) e.minutes += s.minutes;
+        else
+          byGame.set(s.game_id, {
+            id: s.game_id,
+            title: s.title,
+            minutes: s.minutes,
+          });
+      }
+      setDaySessions([]);
+      setGameTotals(
+        [...byGame.values()].sort((a, b) => b.minutes - a.minutes)
+      );
+      setPeriodTotal(periodRows.reduce((a, x) => a + x.minutes, 0));
+    }
     setSummary(startedCompletedInRange(r.from, r.to));
   }, [year, month, selected, scope]);
 
@@ -71,6 +102,19 @@ export default function CalendarScreen() {
     setYear(d.getFullYear());
     setMonth(d.getMonth());
   };
+
+  const jumpToToday = () => {
+    const t = playDay();
+    setYear(Number(t.slice(0, 4)));
+    setMonth(Number(t.slice(5, 7)) - 1);
+    setSelected(t);
+  };
+
+  // Games both started and completed within the current range.
+  const completedIds = new Set(summary.completed.map((g) => g.id));
+  const wrappedIds = new Set(
+    summary.started.filter((g) => completedIds.has(g.id)).map((g) => g.id)
+  );
 
   const monthName = first.toLocaleDateString(undefined, { month: "long" });
   const startPad = (first.getDay() + 6) % 7; // Monday first
@@ -106,9 +150,14 @@ export default function CalendarScreen() {
             </Text>
           </Pressable>
         </View>
-        <Pressable style={cal.navBtn} onPress={() => nav(1)}>
-          <Text style={{ color: C.textPrimary }}>→</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable style={cal.navBtn} onPress={jumpToToday}>
+            <Text style={{ color: C.textPrimary, fontSize: 12 }}>Today</Text>
+          </Pressable>
+          <Pressable style={cal.navBtn} onPress={() => nav(1)}>
+            <Text style={{ color: C.textPrimary }}>→</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={cal.grid}>
@@ -156,26 +205,47 @@ export default function CalendarScreen() {
 
       <View style={cal.detail}>
         <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: "600", marginBottom: 10 }}>
-          {selected}
-          {daySessions.length > 0
-            ? ` — ${fmtMinutes(daySessions.reduce((a, x) => a + x.minutes, 0))} total`
-            : ""}
+          {range().label}
+          {periodTotal > 0 ? ` — ${fmtMinutes(periodTotal)} total` : ""}
         </Text>
-        {daySessions.length === 0 ? (
+        {scope === "day" ? (
+          daySessions.length === 0 ? (
+            <Text style={{ color: C.textMuted, fontSize: 12 }}>No sessions.</Text>
+          ) : (
+            daySessions.map((sess) => (
+              <View key={sess.id} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: C.textPrimary, fontSize: 13 }}>{sess.title}</Text>
+                  <Text style={{ color: C.progressFill, fontSize: 13, fontWeight: "600" }}>
+                    {fmtMinutes(sess.minutes)}
+                  </Text>
+                </View>
+                {sess.note && (
+                  <Text style={{ color: C.textSecondary, fontSize: 11 }}>{sess.note}</Text>
+                )}
+              </View>
+            ))
+          )
+        ) : gameTotals.length === 0 ? (
           <Text style={{ color: C.textMuted, fontSize: 12 }}>No sessions.</Text>
         ) : (
-          daySessions.map((sess) => (
-            <View key={sess.id} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: C.textPrimary, fontSize: 13 }}>{sess.title}</Text>
-                <Text style={{ color: C.progressFill, fontSize: 13, fontWeight: "600" }}>
-                  {fmtMinutes(sess.minutes)}
-                </Text>
-              </View>
-              {sess.note && (
-                <Text style={{ color: C.textSecondary, fontSize: 11 }}>{sess.note}</Text>
-              )}
-            </View>
+          gameTotals.map((g) => (
+            <Pressable
+              key={g.id}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+              onPress={() => navigation.navigate("GameDetail", { id: g.id })}
+            >
+              <Text style={{ color: C.textPrimary, fontSize: 13, flex: 1, marginRight: 8 }}>
+                {g.title}
+              </Text>
+              <Text style={{ color: C.progressFill, fontSize: 13, fontWeight: "600" }}>
+                {fmtMinutes(g.minutes)}
+              </Text>
+            </Pressable>
           ))
         )}
       </View>
@@ -200,8 +270,19 @@ export default function CalendarScreen() {
               style={cal.gameRow}
               onPress={() => navigation.navigate("GameDetail", { id: g.id })}
             >
-              <Text style={cal.gameTitle}>{g.title}</Text>
-              <Text style={cal.gameDate}>{g.date.slice(0, 10)}</Text>
+              <Text
+                style={[cal.gameTitle, wrappedIds.has(g.id) && cal.wrapped]}
+              >
+                {g.title}
+              </Text>
+              <Text
+                style={[
+                  cal.gameDate,
+                  wrappedIds.has(g.id) && { color: C.gold },
+                ]}
+              >
+                {g.date.slice(0, 10)}
+              </Text>
             </Pressable>
           ))
         )}
@@ -216,12 +297,26 @@ export default function CalendarScreen() {
               style={cal.gameRow}
               onPress={() => navigation.navigate("GameDetail", { id: g.id })}
             >
-              <Text style={cal.gameTitle}>{g.title}</Text>
-              <Text style={[cal.gameDate, { color: C.progressFill }]}>
+              <Text
+                style={[cal.gameTitle, wrappedIds.has(g.id) && cal.wrapped]}
+              >
+                {g.title}
+              </Text>
+              <Text
+                style={[
+                  cal.gameDate,
+                  { color: wrappedIds.has(g.id) ? C.gold : C.progressFill },
+                ]}
+              >
                 {g.date.slice(0, 10)}
               </Text>
             </Pressable>
           ))
+        )}
+        {wrappedIds.size > 0 && (
+          <Text style={cal.legend}>
+            ★ gold = started & completed in this period
+          </Text>
         )}
       </View>
     </ScrollView>
@@ -322,5 +417,15 @@ const cal = themedStyles(() => ({
   gameDate: {
     color: C.textMuted,
     fontSize: 11,
+  },
+  wrapped: {
+    color: C.gold,
+    fontWeight: "600" as const,
+  },
+  legend: {
+    color: C.textMuted,
+    fontSize: 10,
+    marginTop: 10,
+    fontStyle: "italic" as const,
   },
 }));
