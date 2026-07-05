@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { C, themedStyles } from "../theme";
@@ -15,6 +15,7 @@ import {
   wrapItUp,
 } from "../db/stats";
 import { fmtMinutes } from "../logic/derive";
+import { allGames } from "../db/repo";
 
 const RANGES: { key: Range; label: string }[] = [
   { key: "week", label: "Week" },
@@ -33,19 +34,31 @@ export default function StatsScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => setTick((t) => t + 1), []));
 
-  const totals = {
-    week: totalPlaytime("week"),
-    month: totalPlaytime("month"),
-    year: totalPlaytime("year"),
-    all: totalPlaytime("all"),
-  };
-  const byTime = ranking(playRange);
-  const bySessions = [...ranking(sessRange)].sort((a, b) => b.sessions - a.sessions);
-  const genres = genreDistribution(genreRange);
-  const longest = longestToComplete();
-  const wrap = wrapItUp().slice(0, 10);
-  const faves = allTimeFaves().slice(0, 10);
-  const yearFaves = favesByYear();
+  // Fetch the enriched game list once per focus and derive everything from
+  // it; memoized so tapping a range chip doesn't recompute unrelated cards.
+  const games = useMemo(() => allGames(), [tick]);
+  const totals = useMemo(
+    () => ({
+      week: totalPlaytime("week"),
+      month: totalPlaytime("month"),
+      year: totalPlaytime("year"),
+      all: totalPlaytime("all"),
+    }),
+    [tick]
+  );
+  const byTime = useMemo(() => ranking(playRange), [tick, playRange]);
+  const bySessions = useMemo(
+    () => [...ranking(sessRange)].sort((a, b) => b.sessions - a.sessions),
+    [tick, sessRange]
+  );
+  const genres = useMemo(
+    () => genreDistribution(genreRange),
+    [tick, genreRange]
+  );
+  const longest = useMemo(() => longestToComplete(games), [games]);
+  const wrap = useMemo(() => wrapItUp(games).slice(0, 10), [games]);
+  const faves = useMemo(() => allTimeFaves(games).slice(0, 10), [games]);
+  const yearFaves = useMemo(() => favesByYear(3, games), [games]);
 
   return (
     <ScrollView

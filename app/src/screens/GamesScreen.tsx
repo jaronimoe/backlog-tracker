@@ -1,8 +1,15 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { C, themedStyles } from "../theme";
-import { GameRow, Input, Section } from "../components/ui";
+import { GameRow, Input, SectionHeader } from "../components/ui";
 import { SessionLogModal } from "../components/SessionLogModal";
 import { allGames, sessionsForDay, windowConfig } from "../db/repo";
 import {
@@ -21,11 +28,27 @@ const GROUPS: { key: StateGroup; label: string }[] = [
   { key: "completed", label: "Completed" },
 ];
 
+const DEFAULT_OPEN: Record<string, boolean> = { recent: true };
+
+// The list is flattened (section headers + game rows) so a single
+// virtualized FlatList renders it — only rows near the viewport mount.
+type ListItem =
+  | {
+      type: "section";
+      key: string;
+      title: string;
+      count: number;
+      open: boolean;
+      first: boolean;
+    }
+  | { type: "game"; section: string; game: GameWithMeta };
+
 export default function GamesScreen({ navigation }: any) {
   const [games, setGames] = useState<GameWithMeta[]>([]);
   const [todaySessions, setTodaySessions] = useState<
     ReturnType<typeof sessionsForDay>
   >([]);
+  const [cfg, setCfg] = useState(windowConfig);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [logGame, setLogGame] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -33,12 +56,12 @@ export default function GamesScreen({ navigation }: any) {
   const [tagModal, setTagModal] = useState(false);
 
   const today = playDay();
-  const cfg = windowConfig();
   const searching = query.trim().length > 0;
 
   const reload = useCallback(() => {
     setGames(allGames());
     setTodaySessions(sessionsForDay(today));
+    setCfg(windowConfig());
   }, [today]);
 
   useFocusEffect(reload);
@@ -86,20 +109,85 @@ export default function GamesScreen({ navigation }: any) {
     );
   }, [games, query, searching, filter]);
 
-  const recent = visible
-    .filter((g) => isRecentlyPlayed(g.lastPlayed, cfg.recentDays))
-    .sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? ""));
+  const items = useMemo<ListItem[]>(() => {
+    const byRecency = (a: GameWithMeta, b: GameWithMeta) =>
+      (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "");
 
-  // Recently Played and Current are mutually exclusive:
-  // a game shown in Recently Played is hidden from its group section.
-  const recentIds = new Set(recent.map((g) => g.id));
+    const recent = visible
+      .filter((g) => isRecentlyPlayed(g.lastPlayed, cfg.recentDays))
+      .sort(byRecency);
+    // Recently Played and Current are mutually exclusive:
+    // a game shown in Recently Played is hidden from its group section.
+    const recentIds = new Set(recent.map((g) => g.id));
 
-  const byGroup = (key: StateGroup) =>
-    visible
-      .filter(
-        (g) => g.group === key && !(key === "current" && recentIds.has(g.id))
-      )
-      .sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? ""));
+    const out: ListItem[] = [];
+    const push = (key: string, title: string, list: GameWithMeta[]) => {
+      const isOpen = searching || (open[key] ?? DEFAULT_OPEN[key] ?? false);
+      out.push({
+        type: "section",
+        key,
+        title,
+        count: list.length,
+        open: isOpen,
+        first: out.length === 0,
+      });
+      if (isOpen)
+        for (const g of list) out.push({ type: "game", section: key, game: g });
+    };
+
+    push(
+      "recent",
+      `Recently Played (last ${cfg.recentDays} days)`,
+      recent
+    );
+    for (const { key, label } of GROUPS)
+      push(
+        key,
+        label,
+        visible
+          .filter(
+            (g) =>
+              g.group === key && !(key === "current" && recentIds.has(g.id))
+          )
+          .sort(byRecency)
+      );
+    return out;
+  }, [visible, open, searching, cfg.recentDays]);
+
+  const toggleSection = useCallback((key: string) => {
+    setOpen((o) => ({ ...o, [key]: !(o[key] ?? DEFAULT_OPEN[key] ?? false) }));
+  }, []);
+
+  const keyExtractor = useCallback(
+    (item: ListItem) =>
+      item.type === "section"
+        ? `s:${item.key}`
+        : `g:${item.section}:${item.game.id}`,
+    []
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: ListItem }) => {
+      if (item.type === "section")
+        return (
+          <SectionHeader
+            title={item.title}
+            count={item.count}
+            open={item.open}
+            onToggle={() => toggleSection(item.key)}
+            style={item.first ? undefined : { marginTop: 8 }}
+          />
+        );
+      return (
+        <GameRow
+          game={item.game}
+          onPress={() => navigation.navigate("GameDetail", { id: item.game.id })}
+          onPlayedToday={() => setLogGame(item.game.id)}
+        />
+      );
+    },
+    [navigation, toggleSection]
+  );
 
   const dateLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -108,11 +196,10 @@ export default function GamesScreen({ navigation }: any) {
     year: "numeric",
   });
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: C.bgPrimary }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-    >
+  // Passed as an element (not a component) so the search TextInput is
+  // reconciled in place and keeps focus while typing.
+  const header = (
+    <View>
       {/* header */}
       <View
         style={{
@@ -182,6 +269,54 @@ export default function GamesScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
+      {/* Played Today (hidden while searching) */}
+      {!searching && (
+        <View style={t.dropZone}>
+          <Text style={t.dropTitle}>🎮 Played Today</Text>
+          {todaySessions.length === 0 ? (
+            <Text style={t.dropHint}>
+              Nothing yet — tap ▶ on a game to log a session
+            </Text>
+          ) : (
+            todaySessions.map((sess) => (
+              <Pressable
+                key={sess.id}
+                style={t.todayGame}
+                onPress={() => setLogGame(sess.game_id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.textPrimary, fontWeight: "600", fontSize: 14 }}>
+                    {sess.title}
+                  </Text>
+                  <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 2 }}>
+                    {fmtMinutes(sess.minutes)} today
+                    {sess.note ? ` — ${sess.note}` : ""}
+                  </Text>
+                </View>
+                <Text style={{ color: C.accent, fontSize: 12 }}>Edit</Text>
+              </Pressable>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bgPrimary }}>
+      <FlatList
+        data={items}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={header}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={14}
+        maxToRenderPerBatch={20}
+        windowSize={9}
+        removeClippedSubviews
+      />
+
       {/* all-tags filter modal */}
       <Modal
         visible={tagModal}
@@ -245,76 +380,6 @@ export default function GamesScreen({ navigation }: any) {
         </Pressable>
       </Modal>
 
-      {/* Played Today (hidden while searching) */}
-      {!searching && (
-        <View style={t.dropZone}>
-          <Text style={t.dropTitle}>🎮 Played Today</Text>
-          {todaySessions.length === 0 ? (
-            <Text style={t.dropHint}>
-              Nothing yet — tap ▶ on a game to log a session
-            </Text>
-          ) : (
-            todaySessions.map((sess) => (
-              <Pressable
-                key={sess.id}
-                style={t.todayGame}
-                onPress={() => setLogGame(sess.game_id)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.textPrimary, fontWeight: "600", fontSize: 14 }}>
-                    {sess.title}
-                  </Text>
-                  <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 2 }}>
-                    {fmtMinutes(sess.minutes)} today
-                    {sess.note ? ` — ${sess.note}` : ""}
-                  </Text>
-                </View>
-                <Text style={{ color: C.accent, fontSize: 12 }}>Edit</Text>
-              </Pressable>
-            ))
-          )}
-        </View>
-      )}
-
-      {/* Recently Played */}
-      <Section
-        title={`Recently Played (last ${cfg.recentDays} days)`}
-        count={recent.length}
-        open={searching || (open["recent"] ?? true)}
-        onToggle={() => setOpen((o) => ({ ...o, recent: !(o.recent ?? true) }))}
-      >
-        {recent.map((g) => (
-          <GameRow
-            key={g.id}
-            game={g}
-            onPress={() => navigation.navigate("GameDetail", { id: g.id })}
-            onPlayedToday={() => setLogGame(g.id)}
-          />
-        ))}
-      </Section>
-
-      {GROUPS.map(({ key, label }) => {
-        const list = byGroup(key);
-        return (
-          <Section
-            key={key}
-            title={label}
-            count={list.length}
-            open={searching || (open[key] ?? false)}
-            onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
-          >
-            {list.map((g) => (
-              <GameRow
-                key={g.id}
-                game={g}
-                onPress={() => navigation.navigate("GameDetail", { id: g.id })}
-                onPlayedToday={() => setLogGame(g.id)}
-              />
-            ))}
-          </Section>
-        );
-      })}
-
       <SessionLogModal
         gameId={logGame}
         visible={logGame != null}
@@ -323,7 +388,7 @@ export default function GamesScreen({ navigation }: any) {
           if (changed) reload();
         }}
       />
-    </ScrollView>
+    </View>
   );
 }
 

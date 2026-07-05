@@ -27,10 +27,14 @@ export function daysBetween(a: string, b: string): number {
  * - checkbox: regular milestones span 0–100%; each done stretch goal adds one
  *   regular-milestone share (100 / #regular) beyond 100%.
  */
-export function progressPercent(game: Game, milestones: Milestone[]): number {
+export function progressPercent(
+  // list queries ship length(walkthrough_text) instead of the text itself
+  game: Game & { walkthrough_len?: number },
+  milestones: Milestone[]
+): number {
   if (game.progress_method === "manual") return game.manual_percent;
   if (game.progress_method === "walkthrough") {
-    const len = game.walkthrough_text?.length ?? 0;
+    const len = game.walkthrough_len ?? game.walkthrough_text?.length ?? 0;
     if (len === 0) return 0;
     return Math.min(
       100,

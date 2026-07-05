@@ -319,61 +319,108 @@ export function addNote(gameId: number, text: string) {
 // ---------- aggregated game list ----------
 
 export function getGame(id: number): GameWithMeta | null {
+  // Single-game load keeps the full row (detail screen needs walkthrough_text).
   const g = db.getFirstSync<Game>("SELECT * FROM games WHERE id = ?", [id]);
   if (!g) return null;
-  return enrich(g);
+  return enrichAll([g], id)[0] ?? null;
+}
+
+// Heavy text columns are not needed to render lists; ship NULL plus the
+// length of walkthrough_text (all walkthrough progress needs) instead.
+const HEAVY_COLUMNS = new Set(["walkthrough_text", "recap_text"]);
+let listColumnsCache: string | null = null;
+
+function gameListColumns(): string {
+  if (!listColumnsCache) {
+    listColumnsCache = db
+      .getAllSync<{ name: string }>("PRAGMA table_info(games)")
+      .map((r) => r.name)
+      .map((c) => (HEAVY_COLUMNS.has(c) ? `NULL AS ${c}` : c))
+      .concat("length(COALESCE(walkthrough_text, '')) AS walkthrough_len")
+      .join(", ");
+  }
+  return listColumnsCache;
 }
 
 export function allGames(): GameWithMeta[] {
-  const games = db.getAllSync<Game>("SELECT * FROM games ORDER BY title");
-  return games.map(enrich);
+  const games = db.getAllSync<Game>(
+    `SELECT ${gameListColumns()} FROM games ORDER BY title`
+  );
+  return enrichAll(games);
 }
 
-function enrich(g: Game): GameWithMeta {
+/**
+ * Batch-enrich: tags, session aggregates, milestones and derived state for
+ * all given games using a fixed number of queries (3) instead of ~5 per game.
+ */
+function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
+  if (games.length === 0) return [];
   const cfg = windowConfig();
-  const tags = db
-    .getAllSync<{ tag: string }>(
-      "SELECT tag FROM tags WHERE game_id = ? ORDER BY tag",
-      [g.id]
-    )
-    .map((r) => r.tag);
-  const agg = db.getFirstSync<{
-    total: number;
-    n: number;
-    last: string | null;
-  }>(
-    "SELECT COALESCE(SUM(minutes),0) total, COUNT(*) n, MAX(date) last FROM sessions WHERE game_id = ?",
-    [g.id]
-  );
-  const sessionMinutes = agg?.total ?? 0;
-  const sessionCount = agg?.n ?? 0;
-  const lastSession = agg?.last ?? null;
-  const lastPlayed =
-    lastSession && g.last_played_override
-      ? lastSession > g.last_played_override
-        ? lastSession
-        : g.last_played_override
-      : lastSession ?? g.last_played_override;
-  const milestones = milestonesFor(g.id);
-  const progress = progressPercent(g, milestones);
-  const totalMinutes = sessionMinutes + g.imported_minutes;
-  const group = deriveGroup(g, lastPlayed, totalMinutes, progress, cfg);
-  const dates = db
-    .getAllSync<{ date: string }>(
-      "SELECT date FROM sessions WHERE game_id = ?",
-      [g.id]
-    )
-    .map((r) => r.date);
-  return {
-    ...g,
-    tags,
-    totalMinutes,
-    sessionCount,
-    lastPlayed,
-    progress,
-    group,
-    streak: streak(dates, streakGrace()),
-  };
+  const grace = streakGrace();
+  const today = playDay();
+  const where = onlyId != null ? "WHERE game_id = ?" : "";
+  const params = onlyId != null ? [onlyId] : [];
+
+  const tagsBy = new Map<number, string[]>();
+  for (const r of db.getAllSync<{ game_id: number; tag: string }>(
+    `SELECT game_id, tag FROM tags ${where} ORDER BY tag`,
+    params
+  )) {
+    let list = tagsBy.get(r.game_id);
+    if (!list) tagsBy.set(r.game_id, (list = []));
+    list.push(r.tag);
+  }
+
+  // One row per game+day (UNIQUE constraint), ordered so the last entry
+  // is the most recent session and row count equals the session count.
+  const sessBy = new Map<number, { dates: string[]; total: number }>();
+  for (const r of db.getAllSync<{
+    game_id: number;
+    date: string;
+    minutes: number;
+  }>(`SELECT game_id, date, minutes FROM sessions ${where} ORDER BY date`, params)) {
+    let s = sessBy.get(r.game_id);
+    if (!s) sessBy.set(r.game_id, (s = { dates: [], total: 0 }));
+    s.dates.push(r.date);
+    s.total += r.minutes;
+  }
+
+  const msBy = new Map<number, Milestone[]>();
+  for (const m of db.getAllSync<Milestone>(
+    `SELECT * FROM milestones ${where} ORDER BY sort, id`,
+    params
+  )) {
+    let list = msBy.get(m.game_id);
+    if (!list) msBy.set(m.game_id, (list = []));
+    list.push(m);
+  }
+
+  return games.map((g) => {
+    const sess = sessBy.get(g.id);
+    const sessionMinutes = sess?.total ?? 0;
+    const sessionCount = sess?.dates.length ?? 0;
+    const lastSession = sess ? sess.dates[sess.dates.length - 1] : null;
+    const lastPlayed =
+      lastSession && g.last_played_override
+        ? lastSession > g.last_played_override
+          ? lastSession
+          : g.last_played_override
+        : lastSession ?? g.last_played_override;
+    const milestones = msBy.get(g.id) ?? [];
+    const progress = progressPercent(g, milestones);
+    const totalMinutes = sessionMinutes + g.imported_minutes;
+    const group = deriveGroup(g, lastPlayed, totalMinutes, progress, cfg, today);
+    return {
+      ...g,
+      tags: tagsBy.get(g.id) ?? [],
+      totalMinutes,
+      sessionCount,
+      lastPlayed,
+      progress,
+      group,
+      streak: streak(sess?.dates ?? [], grace, today),
+    };
+  });
 }
 
 // ---------- genre blocker ----------

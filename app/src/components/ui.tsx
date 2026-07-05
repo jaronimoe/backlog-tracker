@@ -182,6 +182,28 @@ export function GameRow({
   );
 }
 
+export function SectionHeader({
+  title,
+  count,
+  open,
+  onToggle,
+  style,
+}: {
+  title: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  style?: object;
+}) {
+  return (
+    <Pressable style={[s.sectionHeader, style]} onPress={onToggle}>
+      <Text style={s.sectionArrow}>{open ? "▼" : "▶"}</Text>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <Text style={s.sectionCount}>{count} games</Text>
+    </Pressable>
+  );
+}
+
 export function Section({
   title,
   count,
@@ -197,11 +219,7 @@ export function Section({
 }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Pressable style={s.sectionHeader} onPress={onToggle}>
-        <Text style={s.sectionArrow}>{open ? "▼" : "▶"}</Text>
-        <Text style={s.sectionTitle}>{title}</Text>
-        <Text style={s.sectionCount}>{count} games</Text>
-      </Pressable>
+      <SectionHeader title={title} count={count} open={open} onToggle={onToggle} />
       {open && <View>{children}</View>}
     </View>
   );

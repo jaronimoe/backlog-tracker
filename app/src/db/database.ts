@@ -119,6 +119,10 @@ const MIGRATIONS: string[][] = [
   [
     `UPDATE games SET rating = (rating + 1) / 2 WHERE rating IS NOT NULL`,
   ],
+  // v5 — index for per-game milestone lookups (detail screen, completion checks)
+  [
+    `CREATE INDEX IF NOT EXISTS idx_milestones_game ON milestones(game_id)`,
+  ],
 ];
 
 export function migrate() {
