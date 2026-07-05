@@ -231,6 +231,37 @@ export function sessionsInRange(
   );
 }
 
+export interface RangeGameSummary {
+  started: { id: number; title: string; date: string }[];
+  completed: { id: number; title: string; date: string }[];
+}
+
+/**
+ * Games started (start_date in range) and completed (completed_at in range).
+ * Dates are compared on their first 10 chars (ISO day), so datetime or
+ * lower-precision start dates still resolve to a day within the window.
+ */
+export function startedCompletedInRange(
+  from: string,
+  to: string
+): RangeGameSummary {
+  const started = db.getAllSync<{ id: number; title: string; date: string }>(
+    `SELECT id, title, start_date AS date FROM games
+     WHERE start_date IS NOT NULL
+       AND substr(start_date, 1, 10) >= ? AND substr(start_date, 1, 10) <= ?
+     ORDER BY start_date, title`,
+    [from, to]
+  );
+  const completed = db.getAllSync<{ id: number; title: string; date: string }>(
+    `SELECT id, title, completed_at AS date FROM games
+     WHERE completed_at IS NOT NULL
+       AND substr(completed_at, 1, 10) >= ? AND substr(completed_at, 1, 10) <= ?
+     ORDER BY completed_at, title`,
+    [from, to]
+  );
+  return { started, completed };
+}
+
 /** true if this game has never been played (no sessions, no imported time) */
 export function isNeverPlayed(gameId: number): boolean {
   const g = db.getFirstSync<{ imported_minutes: number }>(
