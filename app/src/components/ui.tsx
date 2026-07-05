@@ -1,15 +1,17 @@
 import React, { useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { C, TAG_TYPE_COLORS } from "../theme";
 import { GameWithMeta } from "../types";
-import { fmtMinutes, sortTags, splitTag } from "../logic/derive";
+import { fmtMinutes, isoDate, sortTags, splitTag } from "../logic/derive";
 
 export function ProgressBar({
   percent,
@@ -251,6 +253,72 @@ export function Input(props: React.ComponentProps<typeof TextInput>) {
   );
 }
 
+/** Parse "YYYY", "YYYY-MM" or "YYYY-MM-DD" into a local Date (null if unparseable). */
+function parseFlexibleDate(str: string): Date | null {
+  const t = str.trim();
+  let m;
+  if ((m = t.match(/^(\d{4})$/))) return new Date(+m[1], 0, 1);
+  if ((m = t.match(/^(\d{4})-(\d{2})$/))) return new Date(+m[1], +m[2] - 1, 1);
+  if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/)))
+    return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+
+/**
+ * A date entry field: a text input (so fuzzy values like "2021" still work)
+ * paired with a native calendar picker button and a clear button.
+ */
+export function DateField({
+  value,
+  onChange,
+  placeholder,
+  maximumDate,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  maximumDate?: Date;
+}) {
+  const [show, setShow] = useState(false);
+  const current = parseFlexibleDate(value) ?? new Date();
+
+  const handleChange = (_: unknown, d?: Date) => {
+    if (Platform.OS !== "ios") setShow(false);
+    if (d) onChange(isoDate(d));
+  };
+
+  return (
+    <View>
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+        <Input
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          autoCapitalize="none"
+          style={{ flex: 1 }}
+        />
+        <Pressable onPress={() => setShow((v) => !v)} style={s.dateIconBtn}>
+          <Text style={{ fontSize: 18 }}>📅</Text>
+        </Pressable>
+        {value.trim() !== "" && (
+          <Pressable onPress={() => onChange("")} style={s.dateIconBtn}>
+            <Text style={{ color: C.textMuted, fontSize: 16 }}>✕</Text>
+          </Pressable>
+        )}
+      </View>
+      {show && (
+        <DateTimePicker
+          value={current}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "calendar"}
+          maximumDate={maximumDate}
+          onChange={handleChange}
+        />
+      )}
+    </View>
+  );
+}
+
 export const s = StyleSheet.create({
   pbTrack: {
     height: 6,
@@ -342,5 +410,15 @@ export const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
+  },
+  dateIconBtn: {
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

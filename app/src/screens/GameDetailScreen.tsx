@@ -17,6 +17,7 @@ import { C } from "../theme";
 import {
   Btn,
   Cover,
+  DateField,
   Field,
   Input,
   ProgressBar,
@@ -712,7 +713,12 @@ function EditGameModal({
               <Input value={coverUrl} onChangeText={setCoverUrl} autoCapitalize="none" placeholder="https://..." />
             </Field>
             <Field label="Started (YYYY, YYYY-MM or YYYY-MM-DD — empty = not started)">
-              <Input value={startDate} onChangeText={setStartDate} placeholder="2021" autoCapitalize="none" />
+              <DateField
+                value={startDate}
+                onChange={setStartDate}
+                placeholder="2021"
+                maximumDate={new Date()}
+              />
             </Field>
             <Field label="Base playtime (outside logged sessions)">
               <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -723,7 +729,11 @@ function EditGameModal({
               </View>
             </Field>
             <Field label="Completed on (YYYY-MM-DD — empty = not completed)">
-              <Input value={completedAt} onChangeText={setCompletedAt} placeholder="" autoCapitalize="none" />
+              <DateField
+                value={completedAt}
+                onChange={setCompletedAt}
+                maximumDate={new Date()}
+              />
             </Field>
             <Field label="Rating (tap again to clear)">
               <Stars rating={rating} size={24} onRate={setRating} />

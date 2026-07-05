@@ -12,7 +12,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Linking from "expo-linking";
 import { C } from "../theme";
-import { Btn, Field, Input, TagRow } from "../components/ui";
+import { Btn, DateField, Field, Input, TagRow } from "../components/ui";
 import {
   addGame,
   findByExternalId,
@@ -259,7 +259,12 @@ export default function AddGameScreen({ navigation }: any) {
             </View>
           </Field>
           <Field label="Last played (optional, YYYY-MM-DD — defaults to start date)">
-            <Input value={lastPlayed} onChangeText={setLastPlayed} placeholder="YYYY-MM-DD" />
+            <DateField
+              value={lastPlayed}
+              onChange={setLastPlayed}
+              placeholder="YYYY-MM-DD"
+              maximumDate={new Date()}
+            />
           </Field>
         </>
       )}
