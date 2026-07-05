@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { C, TAG_TYPE_COLORS } from "../theme";
+import { C, TAG_TYPE_COLORS, themedStyles } from "../theme";
 import { GameWithMeta } from "../types";
 import { fmtMinutes, isoDate, sortTags, splitTag } from "../logic/derive";
 
@@ -319,7 +319,8 @@ export function DateField({
   );
 }
 
-export const s = StyleSheet.create({
+export const s = themedStyles(() =>
+  StyleSheet.create({
   pbTrack: {
     height: 6,
     backgroundColor: C.progressBg,
@@ -421,4 +422,5 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-});
+  })
+);

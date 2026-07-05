@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { migrate } from "./src/db/database";
-import { C } from "./src/theme";
+import { C, currentStatusBarStyle, initTheme, useTheme } from "./src/theme";
 import GamesScreen from "./src/screens/GamesScreen";
 import CalendarScreen from "./src/screens/CalendarScreen";
 import StatsScreen from "./src/screens/StatsScreen";
@@ -17,21 +17,10 @@ import GameDetailScreen from "./src/screens/GameDetailScreen";
 import AddGameScreen from "./src/screens/AddGameScreen";
 
 migrate();
+initTheme();
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
-
-const theme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: C.bgPrimary,
-    card: C.bgSecondary,
-    text: C.textPrimary,
-    primary: C.accent,
-    border: C.border,
-  },
-};
 
 const ICONS: Record<string, string> = {
   Games: "🎮",
@@ -65,9 +54,21 @@ function Tabs() {
 }
 
 export default function App() {
+  useTheme(); // re-render the whole tree when the theme changes
+  const navTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: C.bgPrimary,
+      card: C.bgSecondary,
+      text: C.textPrimary,
+      primary: C.accent,
+      border: C.border,
+    },
+  };
   return (
-    <NavigationContainer theme={theme}>
-      <StatusBar style="light" />
+    <NavigationContainer theme={navTheme}>
+      <StatusBar style={currentStatusBarStyle()} />
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: C.bgSecondary },

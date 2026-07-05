@@ -169,6 +169,8 @@ export const SETTINGS = {
   llmToken: "llm_token", // GitHub fine-grained PAT (Models: read) or any compatible key
   llmBaseUrl: "llm_base_url", // OpenAI-compatible base, no trailing /chat/completions
   llmModel: "llm_model", // e.g. openai/gpt-4.1
+  theme: "theme", // 'dark' | 'beige' | 'retro' (default 'dark')
+  themeOverrides: "theme_overrides", // JSON: { [themeName]: { colors?, tags? } }
 };
 
 export const LLM_DEFAULTS = {

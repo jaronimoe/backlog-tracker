@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 import { Cover } from "../components/ui";
 import { allGames } from "../db/repo";
 import { GameWithMeta } from "../types";
@@ -66,7 +66,7 @@ export default function MindScreen({ navigation }: any) {
   );
 }
 
-const cloud = {
+const cloud = themedStyles(() => ({
   cloud: {
     backgroundColor: C.bgSecondary,
     borderRadius: 60,
@@ -91,4 +91,4 @@ const cloud = {
     borderWidth: 2,
     borderColor: C.border,
   },
-};
+}));

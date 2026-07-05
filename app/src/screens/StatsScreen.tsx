@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 import { ProgressBar, Stars } from "../components/ui";
 import { FilterChip } from "./GamesScreen";
 import {
@@ -234,7 +234,7 @@ function EmptyFaves() {
   );
 }
 
-const st = {
+const st = themedStyles(() => ({
   statCard: {
     flex: 1,
     backgroundColor: C.bgCard,
@@ -261,4 +261,4 @@ const st = {
     letterSpacing: 0.5,
     marginTop: 2,
   },
-};
+}));

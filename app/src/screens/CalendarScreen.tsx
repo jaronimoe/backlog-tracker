@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 import {
   sessionsInRange,
   sessionsForDay,
@@ -228,7 +228,7 @@ export default function CalendarScreen() {
   );
 }
 
-const cal = {
+const cal = themedStyles(() => ({
   nav: {
     flexDirection: "row" as const,
     alignItems: "center" as const,
@@ -323,4 +323,4 @@ const cal = {
     color: C.textMuted,
     fontSize: 11,
   },
-};
+}));

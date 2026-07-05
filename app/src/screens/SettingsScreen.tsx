@@ -1,6 +1,18 @@
 import React, { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { C } from "../theme";
+import {
+  C,
+  TAG_TYPE_COLORS,
+  THEMES,
+  THEME_COLOR_KEYS,
+  TAG_COLOR_KEYS,
+  clearOverrides,
+  hasOverrides,
+  setColorOverride,
+  setTheme,
+  themedStyles,
+  useTheme,
+} from "../theme";
 import { Btn, Field, Input } from "../components/ui";
 import { getSetting, setSetting, SETTINGS, LLM_DEFAULTS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
@@ -82,6 +94,9 @@ export default function SettingsScreen() {
       style={{ flex: 1, backgroundColor: C.bgPrimary }}
       contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
     >
+      <Text style={h.title}>Appearance</Text>
+      <AppearanceSection />
+
       <Text style={h.title}>Windows</Text>
       <Field label="Recently Played window (days)">
         <Input value={recentDays} onChangeText={setRecentDays} keyboardType="numeric" />
@@ -272,7 +287,156 @@ export default function SettingsScreen() {
   );
 }
 
-const h = {
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+function ColorRow({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onCommit: (hex: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  const trimmed = text.trim();
+  const valid = HEX_RE.test(trimmed);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 4,
+          borderWidth: 1,
+          borderColor: C.border,
+          backgroundColor: valid ? trimmed : value,
+        }}
+      />
+      <Text style={{ color: C.textSecondary, fontSize: 12, flex: 1 }}>{label}</Text>
+      <Input
+        value={text}
+        onChangeText={(t: string) => {
+          setText(t);
+          const v = t.trim();
+          if (HEX_RE.test(v)) onCommit(v);
+        }}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={{ width: 110, paddingVertical: 6, borderColor: valid ? C.border : C.accent }}
+      />
+    </View>
+  );
+}
+
+function AppearanceSection() {
+  const { name } = useTheme();
+  const [customize, setCustomize] = useState(false);
+
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+        {Object.entries(THEMES).map(([key, t]) => {
+          const active = key === name;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setTheme(key)}
+              style={{
+                flex: 1,
+                backgroundColor: t.colors.bgSecondary,
+                borderWidth: 2,
+                borderColor: active ? C.accent : C.border,
+                borderRadius: 8,
+                padding: 10,
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {[t.colors.bgPrimary, t.colors.bgCard, t.colors.accent, t.colors.progressFill].map(
+                  (c, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 7,
+                        backgroundColor: c,
+                        borderWidth: 1,
+                        borderColor: "rgba(128,128,128,0.4)",
+                      }}
+                    />
+                  )
+                )}
+              </View>
+              <Text
+                style={{
+                  color: t.colors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: active ? "700" : "400",
+                }}
+              >
+                {t.label}
+                {active && hasOverrides() ? " *" : ""}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Pressable onPress={() => setCustomize((v) => !v)} hitSlop={8}>
+        <Text style={{ color: C.accent, fontSize: 12, marginBottom: 8 }}>
+          {customize ? "▼" : "▶"} Customize colors
+          {hasOverrides() ? " (modified)" : ""}
+        </Text>
+      </Pressable>
+
+      {customize && (
+        <View key={name}>
+          <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+            Overrides the “{THEMES[name]?.label ?? name}” theme. Enter hex colors
+            (#rgb or #rrggbb); changes apply live and are saved per theme.
+          </Text>
+          {THEME_COLOR_KEYS.map((k) => (
+            <ColorRow
+              key={`${name}.${k}`}
+              label={k}
+              value={C[k]}
+              onCommit={(hex) => setColorOverride(k, hex)}
+            />
+          ))}
+          <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>
+            Tag colors
+          </Text>
+          {TAG_COLOR_KEYS.map((k) => (
+            <ColorRow
+              key={`${name}.tag.${k}`}
+              label={`tag: ${k}`}
+              value={TAG_TYPE_COLORS[k]}
+              onCommit={(hex) => setColorOverride(k, hex, true)}
+            />
+          ))}
+          {hasOverrides() && (
+            <Btn
+              label="Reset to theme defaults"
+              kind="secondary"
+              onPress={() =>
+                Alert.alert("Reset colors?", `Remove all custom colors for “${THEMES[name]?.label}”.`, [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Reset", style: "destructive", onPress: () => clearOverrides() },
+                ])
+              }
+              style={{ marginTop: 6 }}
+            />
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const h = themedStyles(() => ({
   title: {
     color: C.textPrimary,
     fontSize: 15,
@@ -280,4 +444,4 @@ const h = {
     marginBottom: 10,
     marginTop: 10,
   },
-};
+}));

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 import { GameRow, Input, Section } from "../components/ui";
 import { SessionLogModal } from "../components/SessionLogModal";
 import { allGames, sessionsForDay, windowConfig } from "../db/repo";
@@ -353,7 +353,7 @@ export function FilterChip({
   );
 }
 
-const ft = {
+const ft = themedStyles(() => ({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
@@ -389,9 +389,9 @@ const ft = {
     flexWrap: "wrap" as const,
     gap: 6,
   },
-};
+}));
 
-const t = {
+const t = themedStyles(() => ({
   dropZone: {
     borderWidth: 2,
     borderStyle: "dashed" as const,
@@ -417,4 +417,4 @@ const t = {
     marginBottom: 6,
     gap: 10,
   },
-};
+}));
