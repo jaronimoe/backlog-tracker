@@ -59,6 +59,14 @@ export async function pickAndImport(): Promise<number> {
         );
       }
     }
+    // Back-compat: pre-v6 exports lack the Steam watermark. Seed it from the
+    // import lump so a first re-sync counts only genuinely new playtime instead
+    // of dumping the whole total onto one day.
+    db.runSync(
+      `UPDATE games SET steam_synced_minutes = imported_minutes
+         WHERE steam_synced_minutes = 0
+           AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`
+    );
   });
   return (data.games ?? []).length;
 }

@@ -48,6 +48,7 @@ import {
 } from "../db/repo";
 import { fmtMinutes } from "../logic/derive";
 import { canRecap, getRecap, llmConfigured } from "../services/llm";
+import { steamAppidFor, steamConfigured, syncSteamGame } from "../services/steam";
 import { igdbConfigured, IgdbGame, searchIgdb } from "../services/igdb";
 import {
   GameWithMeta,
@@ -104,6 +105,8 @@ export default function GameDetailScreen({ route, navigation }: any) {
   const [recapText, setRecapText] = useState<string | null>(null);
   const [recapBusy, setRecapBusy] = useState(false);
   const [recapErr, setRecapErr] = useState<string | null>(null);
+  const [steamLinked, setSteamLinked] = useState(false);
+  const [steamBusy, setSteamBusy] = useState(false);
 
   const reload = useCallback(() => {
     const g = getGame(id);
@@ -114,6 +117,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
       setNotes(notesFor(id));
       setManualPct(String(g.manual_percent));
       setWtText(g.walkthrough_text ?? "");
+      setSteamLinked(steamAppidFor(id) != null);
       navigation.setOptions({ title: g.title });
     }
   }, [id]);
@@ -153,6 +157,34 @@ export default function GameDetailScreen({ route, navigation }: any) {
       setOnHold(id, true, holdNote.trim());
       setHoldNote("");
       reload();
+    }
+  };
+
+  const syncFromSteam = async () => {
+    if (steamBusy) return;
+    if (!steamConfigured()) {
+      Alert.alert(
+        "Steam not configured",
+        "Add your Steam Web API key and SteamID64 in Settings → Steam library first.",
+        [
+          { text: "Not now", style: "cancel" },
+          {
+            text: "Open Settings",
+            onPress: () => navigation.navigate("Tabs", { screen: "Settings" }),
+          },
+        ]
+      );
+      return;
+    }
+    setSteamBusy(true);
+    try {
+      const msg = await syncSteamGame(id);
+      reload();
+      Alert.alert("Steam sync", msg);
+    } catch (e: any) {
+      Alert.alert("Steam sync failed", String(e?.message ?? e));
+    } finally {
+      setSteamBusy(false);
     }
   };
 
@@ -275,6 +307,15 @@ export default function GameDetailScreen({ route, navigation }: any) {
           }}
         />
       </View>
+
+      {steamLinked && (
+        <Btn
+          label={steamBusy ? "⏳ Syncing from Steam…" : "♻️ Sync playtime from Steam"}
+          kind="secondary"
+          onPress={syncFromSteam}
+          style={{ marginBottom: 16, opacity: steamBusy ? 0.6 : 1 }}
+        />
+      )}
 
       {/* progress */}
       <View style={{ backgroundColor: C.bgSecondary, borderRadius: 10, padding: 14, marginBottom: 14 }}>

@@ -63,6 +63,8 @@ Built with **React Native + Expo**, targeting iOS and Android.
 #### Steam library (Settings → Steam library)
 - Fetches owned games via the Steam Web API (requires Web API key + SteamID64; profile "Game details" must be Public)
 - **Merge policy:** games matching an existing entry by normalized title are *merged* into it rather than duplicated — enriched with `source:steam` + `platform:steam` tags, a Steam appid link, and playtime (only if the existing entry has no tracked time, to avoid double-counting)
+- **Playtime as dated sessions:** on re-sync, any *new* playtime since the last sync is logged as a real session on Steam's "last played" date — so playing a game and then syncing shows those hours on your calendar/stats for that day (counted exactly once via a per-game watermark, so repeated syncs never double up). When there's no new time, a 0-minute marker session still surfaces the game on its last-played day without touching playtime or overwriting a manually logged session
+- **Per-game sync:** a Steam-linked game's detail screen has a **Sync playtime from Steam** button to refresh just that game's playtime + last-played date on demand (no full library re-import needed)
 - Zero-playtime games get an additional `status:unplayed` tag
 - Fully idempotent — already-linked games are skipped on re-import; new purchases are picked up automatically
 - Runs **non-blocking** (chunked, yields to UI between batches); progress visible on a temporary 📥 Import tab that vanishes when done

@@ -192,6 +192,44 @@ export function logSession(
   );
 }
 
+/**
+ * Add `minutes` to a day's session (creating it if absent), *accumulating*
+ * rather than overwriting. Used by Steam sync to attribute a playtime delta to
+ * its last-played date — repeated same-day syncs keep adding only the new
+ * delta, and any minutes already logged for that day are preserved.
+ */
+export function accumulateSession(
+  gameId: number,
+  date: string,
+  minutes: number,
+  note?: string | null
+) {
+  db.runSync(
+    `INSERT INTO sessions (game_id, date, minutes, note) VALUES (?, ?, ?, ?)
+     ON CONFLICT(game_id, date) DO UPDATE SET
+       minutes = sessions.minutes + excluded.minutes,
+       note = COALESCE(sessions.note, excluded.note)`,
+    [gameId, date, minutes, note ?? null]
+  );
+}
+
+/**
+ * Insert a zero-minute marker session, but only if the day has no session yet.
+ * Used by Steam sync to surface a game on its "last played" date without
+ * adding playtime or clobbering a real logged session. Idempotent across
+ * repeated syncs thanks to the UNIQUE(game_id, date) constraint.
+ */
+export function ensureMarkerSession(
+  gameId: number,
+  date: string,
+  note?: string | null
+) {
+  db.runSync(
+    "INSERT OR IGNORE INTO sessions (game_id, date, minutes, note) VALUES (?, ?, 0, ?)",
+    [gameId, date, note ?? null]
+  );
+}
+
 export function sessionFor(gameId: number, date: string): Session | null {
   return (
     db.getFirstSync<Session>(

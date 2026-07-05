@@ -123,6 +123,16 @@ const MIGRATIONS: string[][] = [
   [
     `CREATE INDEX IF NOT EXISTS idx_milestones_game ON milestones(game_id)`,
   ],
+  // v6 — Steam sync watermark. `imported_minutes` is now the *original* Steam
+  // lump (frozen after first import); `steam_synced_minutes` tracks the last
+  // total we saw from Steam so subsequent playtime growth (a delta) can be
+  // attributed to a dated session instead of the undated lump — without
+  // double-counting. Seed existing Steam-linked games from their current lump.
+  [
+    `ALTER TABLE games ADD COLUMN steam_synced_minutes INTEGER NOT NULL DEFAULT 0`,
+    `UPDATE games SET steam_synced_minutes = imported_minutes
+       WHERE id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`,
+  ],
 ];
 
 export function migrate() {
