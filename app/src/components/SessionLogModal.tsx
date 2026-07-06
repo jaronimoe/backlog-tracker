@@ -13,6 +13,7 @@ import {
 } from "../db/repo";
 import { getSetting, SETTINGS } from "../db/database";
 import { fmtMinutes, playDay, splitTag } from "../logic/derive";
+import { STEAM_MARKER_NOTE } from "../services/steam";
 
 export function SessionLogModal({
   gameId,
@@ -42,8 +43,9 @@ export function SessionLogModal({
     setMinutes(existing?.minutes ?? 15);
     setNote(existing?.note ?? "");
     setBlockerAccepted(false);
-    // Genre blocker: first session of a never-played game
-    if (isNeverPlayed(gameId) && !existing) {
+    // Genre blocker: first session of a never-played game. Only when logging
+    // for today — backfilling a forgotten day or fixing history shouldn't nag.
+    if (isNeverPlayed(gameId) && !existing && day === playDay()) {
       const threshold = parseInt(
         getSetting(SETTINGS.genreBlockThreshold, "1"),
         10
@@ -58,9 +60,43 @@ export function SessionLogModal({
   if (gameId == null) return null;
 
   const save = () => {
-    logSession(gameId, day, minutes, note.trim() || null);
-    if (maybeMarkCompleted(gameId)) promptCompletion(gameId);
-    onClose(true);
+    const finish = () => {
+      logSession(gameId, day, minutes, note.trim() || null);
+      if (maybeMarkCompleted(gameId)) promptCompletion(gameId);
+      onClose(true);
+    };
+    // Shrinking a Steam-attributed session (e.g. a multi-week playtime delta
+    // dumped onto one day): offer to keep the removed time as undated base
+    // playtime so the lifetime total stays accurate.
+    const existing = sessionFor(gameId, day);
+    if (
+      existing &&
+      existing.note?.includes(STEAM_MARKER_NOTE) &&
+      minutes < existing.minutes
+    ) {
+      const diff = existing.minutes - minutes;
+      Alert.alert(
+        "Steam-synced session",
+        `You're removing ${fmtMinutes(diff)} that Steam sync attributed to this day. Keep it as undated base playtime (total stays accurate), or discard it?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Discard time", style: "destructive", onPress: finish },
+          {
+            text: "Keep time",
+            isPreferred: true,
+            onPress: () => {
+              const g = getGame(gameId);
+              updateGame(gameId, {
+                imported_minutes: (g?.imported_minutes ?? 0) + diff,
+              });
+              finish();
+            },
+          },
+        ]
+      );
+      return;
+    }
+    finish();
   };
 
   const showBlocker = blockerHits.length > 0 && !blockerAccepted;
@@ -118,6 +154,28 @@ export function SessionLogModal({
                 >
                   <Text style={m.timeBtnText}>+</Text>
                 </Pressable>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  marginBottom: 18,
+                }}
+              >
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>
+                  or exactly
+                </Text>
+                <Input
+                  value={String(minutes)}
+                  onChangeText={(t) =>
+                    setMinutes(Math.max(0, parseInt(t, 10) || 0))
+                  }
+                  keyboardType="numeric"
+                  style={{ width: 80, textAlign: "center" }}
+                />
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>min</Text>
               </View>
               <Field label="Session note (optional)">
                 <Input

@@ -73,7 +73,7 @@ Three methods per game (switchable):
 - Search by title: while searching, all sections auto-expand and Played Today hides.
 - Genre/tag filter chips.
 - Per-game 🔥 streak counter. Streak = played days; grace period (1/2/3 days) is configurable.
-- Session quick-log modal: ±15 min stepper, optional note.
+- Session quick-log modal: ±15 min stepper **plus direct minutes input** (type any value directly).
 - One session per game per calendar day (upsert). Past-midnight (before 5am) counts to previous day.
 - **+ Add Game** button in header.
 
@@ -84,8 +84,27 @@ Three methods per game (switchable):
 Trigger: logging a session (with no existing session that day) while the game is still **never-played** (total playtime ≤ played threshold, default 29 min). Since the threshold is checked against the running total rather than a one-time flag, it can in principle re-trigger on an early day if the total is still at/under the threshold — a minor, accepted edge case.
 - Counts active games (Current + Backlog started) sharing ≥1 `genre:` tag.
 - If count ≥ threshold (default 1): non-blocking warning with game list, progress %, last-played. [Start anyway] / [Cancel].
+- **Only fires for today's date.** Backfilling a forgotten session or editing a past day never triggers the blocker.
 
 ---
+
+## Per-game session calendar ✅
+
+Accessible via the **Sessions tab** on any game's detail screen.
+
+- **📅 Calendar / ☰ List toggle** — switch between a heat-map month grid and a flat chronological list.
+- **Month grid** (`MonthGrid` component, shared with the global Calendar screen): cells shaded by session minutes, today highlighted with an accent border, selected day with a subtle border.
+- **`← session` / `session →` arrows** jump between this game's actual play-session dates (sorted), auto-snapping the visible month. Arrows are greyed out at the first/last session.
+- **`‹ ›` month steppers** let you browse to months with no sessions (e.g. to backfill a forgotten day). Tapping the month label jumps back to today's month.
+- **Tap any day** → selected-day panel:
+  - *Session exists:* shows minutes + note, with **✎ Edit** and **🗑 Delete** buttons.
+  - *No session:* shows **+ Add session**.
+  - Edit/Add opens the Session Log modal pre-filled with existing data; saving upserts (add or replace).
+- **List view:** tap a row to edit, long-press to delete. Hint text clarifies the gesture.
+- **Editing Steam-attributed sessions:** deleting or shrinking a session whose note contains `STEAM_MARKER_NOTE` ("Last played on Steam") prompts:
+  - **Keep time** *(default, bold on iOS)* — moves the removed minutes into `imported_minutes` (undated base playtime). Lifetime total stays accurate; only the calendar attribution changes.
+  - **Discard time** — permanently removes the time. The sync watermark (`steam_synced_minutes`) is independent of local sessions, so discarded time is **never re-added** on the next sync. However, if Steam still reports that date as last-played, a 0-minute marker session may reappear on the next sync (without hours).
+  - Regular (non-Steam) sessions use a simple Delete confirmation.
 
 ## Calendar ✅
 
@@ -164,6 +183,7 @@ Fuzzy hours (`20?`, `21.5`) parsed correctly. Quoted fields with embedded commas
 - **Per-game sync:** a Steam-linked game's detail screen shows a **"Sync playtime from Steam"** button (only when the game has a linked appid). It fetches the library, refreshes just that game (same logic as bulk re-sync), and reports the delta (or "already up to date"). If Steam credentials aren't set it offers to open Settings.
 - **Unknown-baseline sentinel (v7):** games merged from Steam into entries that already had tracked time never got a playtime lump (anti-double-count policy), so their true Steam total is unknown — migration v7 marks them `steam_synced_minutes = -1`. On their first re-sync the current Steam total is recorded as the baseline **without attributing anything** (result: "baseline set"); only playtime accrued after that becomes dated sessions. The pre-v6 backup-restore re-seed applies the same rule (and only runs for exports with `schema_version < 6`).
 - **Playtime watermark + delta attribution:** `imported_minutes` is the *original* Steam lump captured at first import (undated, since Steam exposes no per-day history), frozen thereafter. A separate `steam_synced_minutes` column (migration v6, seeded from `imported_minutes` for existing Steam games) records the last total seen from Steam. On re-sync, `delta = playtime_forever − steam_synced_minutes`; a **positive delta with a known last-played date is logged as a real dated session on that day** (accumulating, note "Last played on Steam"), then the watermark advances. This means playing a game and then syncing shows the new hours on the calendar/stats for that day. Deltas with no reported date (or negative corrections) fold into `imported_minutes` instead. Because the delta is measured against the watermark, new time is counted exactly once and repeated same-day syncs stay correct.
+- **Manual correction of Steam-attributed sessions:** if a sync attributes a large playtime dump to a single date (e.g. 19h logged because the game was idle or multiple sessions accrued between syncs), users can open the game's Sessions tab and edit or delete the offending entry. The watermark is unaffected, so the corrected time is never re-added. See "Per-game session calendar" above for the Keep time / Discard time prompt.
 - **"Last played" marker sessions:** when there's no new playtime to log (delta ≤ 0) but Steam still reports a `rtime_last_played`, a **0-minute marker session** is stamped on that date (`INSERT OR IGNORE` on `UNIQUE(game_id, date)`) so the game still surfaces on its last-played day without adding playtime or clobbering a real logged session. Never-launched games (`rtime_last_played = 0`) get no marker.
 
 ### IGDB metadata sync ✅

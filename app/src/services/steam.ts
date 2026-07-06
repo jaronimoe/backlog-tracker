@@ -28,8 +28,13 @@ import { RowResult, startImport } from "./importQueue";
  *   `status:unplayed` tag so they don't drown the real backlog.
  */
 
-/** Note stamped on the 0-minute "last played" marker sessions Steam sync adds. */
-const STEAM_MARKER_NOTE = "Last played on Steam";
+/**
+ * Note stamped on sessions Steam sync creates (0-minute "last played"
+ * markers and dated playtime-delta sessions). Session editing UIs use it to
+ * recognise Steam-attributed time and offer to preserve it as undated
+ * base playtime when the user corrects a mis-attributed dump.
+ */
+export const STEAM_MARKER_NOTE = "Last played on Steam";
 
 export interface SteamGame {
   appid: number;

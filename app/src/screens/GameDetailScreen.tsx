@@ -35,6 +35,7 @@ import {
   addTag,
   deleteGame,
   deleteMilestone,
+  deleteSession,
   getGame,
   maybeMarkCompleted,
   milestonesFor,
@@ -46,9 +47,15 @@ import {
   toggleMilestone,
   updateGame,
 } from "../db/repo";
-import { fmtMinutes } from "../logic/derive";
+import { fmtMinutes, playDay } from "../logic/derive";
 import { canRecap, getRecap, llmConfigured } from "../services/llm";
-import { steamAppidFor, steamConfigured, syncSteamGame } from "../services/steam";
+import {
+  STEAM_MARKER_NOTE,
+  steamAppidFor,
+  steamConfigured,
+  syncSteamGame,
+} from "../services/steam";
+import { MonthGrid } from "../components/MonthGrid";
 import { igdbConfigured, IgdbGame, searchIgdb } from "../services/igdb";
 import {
   GameWithMeta,
@@ -557,26 +564,12 @@ export default function GameDetailScreen({ route, navigation }: any) {
       )}
 
       {tab === "sessions" && (
-        <View>
-          {sessions.map((sess) => (
-            <View key={sess.id} style={{ backgroundColor: C.bgSecondary, borderRadius: 8, padding: 12, marginBottom: 6 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: C.textMuted, fontSize: 12 }}>{sess.date}</Text>
-                <Text style={{ color: C.textPrimary, fontSize: 12, fontWeight: "600" }}>
-                  {fmtMinutes(sess.minutes)}
-                </Text>
-              </View>
-              {sess.note && (
-                <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>
-                  {sess.note}
-                </Text>
-              )}
-            </View>
-          ))}
-          {sessions.length === 0 && (
-            <Text style={{ color: C.textMuted, fontSize: 12 }}>No sessions logged yet.</Text>
-          )}
-        </View>
+        <SessionsTab
+          gameId={id}
+          sessions={sessions}
+          importedMinutes={game.imported_minutes}
+          onChanged={reload}
+        />
       )}
 
       {tab === "notes" && (
@@ -666,6 +659,334 @@ export default function GameDetailScreen({ route, navigation }: any) {
         onClose={() => setRecapOpen(false)}
       />
     </ScrollView>
+  );
+}
+
+/**
+ * Per-game session calendar + editable session list.
+ * Arrows jump between this game's sessions (not days/months); the small
+ * ‹ › step months for reaching empty stretches, and tapping the month label
+ * jumps back to today. Tap any day to select it, then add/edit/delete.
+ */
+function SessionsTab({
+  gameId,
+  sessions,
+  importedMinutes,
+  onChanged,
+}: {
+  gameId: number;
+  sessions: Session[]; // sorted DESC by date
+  importedMinutes: number;
+  onChanged: () => void;
+}) {
+  const latest = sessions[0]?.date ?? playDay();
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [sel, setSel] = useState<string>(latest);
+  const [ym, setYm] = useState<{ y: number; m: number }>({
+    y: Number(latest.slice(0, 4)),
+    m: Number(latest.slice(5, 7)) - 1,
+  });
+  const [editDate, setEditDate] = useState<string | null>(null);
+
+  const dates = sessions.map((s) => s.date).sort(); // ascending
+  const prevDate = [...dates].reverse().find((d) => d < sel) ?? null;
+  const nextDate = dates.find((d) => d > sel) ?? null;
+
+  const goto = (d: string) => {
+    setSel(d);
+    setYm({ y: Number(d.slice(0, 4)), m: Number(d.slice(5, 7)) - 1 });
+  };
+
+  const monthStep = (delta: number) => {
+    const d = new Date(ym.y, ym.m + delta, 1);
+    setYm({ y: d.getFullYear(), m: d.getMonth() });
+  };
+
+  const monthPrefix = `${ym.y}-${String(ym.m + 1).padStart(2, "0")}`;
+  const dayTotals: Record<string, number> = {};
+  for (const s of sessions)
+    if (s.date.startsWith(monthPrefix)) dayTotals[s.date] = s.minutes;
+
+  const selSession = sessions.find((s) => s.date === sel) ?? null;
+  const monthName = new Date(ym.y, ym.m, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+
+  const confirmDelete = (sess: Session) => {
+    const finish = () => {
+      deleteSession(sess.id);
+      onChanged();
+    };
+    // Steam-attributed playtime: deleting the session would silently shrink
+    // the lifetime total, so offer to keep the time as undated base playtime.
+    if (sess.note?.includes(STEAM_MARKER_NOTE) && sess.minutes > 0) {
+      Alert.alert(
+        "Delete Steam-synced session?",
+        `Steam sync attributed ${fmtMinutes(sess.minutes)} to ${sess.date}. Keep the time as undated base playtime (total stays accurate), or discard it?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Discard time", style: "destructive", onPress: finish },
+          {
+            text: "Keep time",
+            isPreferred: true,
+            onPress: () => {
+              updateGame(gameId, {
+                imported_minutes: importedMinutes + sess.minutes,
+              });
+              finish();
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Delete session?",
+        `${sess.date} — ${fmtMinutes(sess.minutes)}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: finish },
+        ]
+      );
+    }
+  };
+
+  const navBtnStyle = (disabled: boolean) => ({
+    backgroundColor: C.bgCard,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    opacity: disabled ? 0.4 : 1,
+  });
+
+  return (
+    <View>
+      {/* view toggle */}
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+        {(
+          [
+            ["calendar", "\ud83d\udcc5 Calendar"],
+            ["list", "\u2630 List"],
+          ] as const
+        ).map(([v, label]) => (
+          <Pressable
+            key={v}
+            onPress={() => setView(v)}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: view === v ? C.accent : C.bgCard,
+            }}
+          >
+            <Text
+              style={{
+                color: view === v ? "#fff" : C.textSecondary,
+                fontSize: 12,
+              }}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {view === "calendar" ? (
+        <>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <Pressable
+              disabled={!prevDate}
+              onPress={() => prevDate && goto(prevDate)}
+              style={navBtnStyle(!prevDate)}
+            >
+              <Text style={{ color: C.textPrimary, fontSize: 12 }}>
+                ← session
+              </Text>
+            </Pressable>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+            >
+              <Pressable onPress={() => monthStep(-1)} hitSlop={10}>
+                <Text style={{ color: C.textMuted, fontSize: 18 }}>‹</Text>
+              </Pressable>
+              <Pressable onPress={() => goto(playDay())} hitSlop={6}>
+                <Text
+                  style={{
+                    color: C.textPrimary,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {monthName}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => monthStep(1)} hitSlop={10}>
+                <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              disabled={!nextDate}
+              onPress={() => nextDate && goto(nextDate)}
+              style={navBtnStyle(!nextDate)}
+            >
+              <Text style={{ color: C.textPrimary, fontSize: 12 }}>
+                session →
+              </Text>
+            </Pressable>
+          </View>
+
+          <MonthGrid
+            year={ym.y}
+            month={ym.m}
+            dayTotals={dayTotals}
+            selected={sel}
+            onSelectDay={setSel}
+          />
+
+          {/* selected-day panel */}
+          <View
+            style={{
+              backgroundColor: C.bgSecondary,
+              borderRadius: 10,
+              padding: 14,
+            }}
+          >
+            <Text
+              style={{
+                color: C.textPrimary,
+                fontSize: 13,
+                fontWeight: "600",
+                marginBottom: 6,
+              }}
+            >
+              {sel}
+            </Text>
+            {selSession ? (
+              <>
+                <Text
+                  style={{
+                    color: C.progressFill,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {fmtMinutes(selSession.minutes)}
+                </Text>
+                {selSession.note && (
+                  <Text
+                    style={{
+                      color: C.textSecondary,
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    {selSession.note}
+                  </Text>
+                )}
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                  <Btn
+                    label="✎ Edit"
+                    kind="secondary"
+                    style={{ flex: 1 }}
+                    onPress={() => setEditDate(sel)}
+                  />
+                  <Btn
+                    label="🗑 Delete"
+                    kind="secondary"
+                    style={{ flex: 1 }}
+                    onPress={() => confirmDelete(selSession)}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>
+                  No session on this day.
+                </Text>
+                <Btn
+                  label="+ Add session"
+                  kind="secondary"
+                  style={{ marginTop: 12 }}
+                  onPress={() => setEditDate(sel)}
+                />
+              </>
+            )}
+          </View>
+        </>
+      ) : (
+        <View>
+          <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 8 }}>
+            Tap a session to edit · long-press to delete
+          </Text>
+          {sessions.map((sess) => (
+            <Pressable
+              key={sess.id}
+              onPress={() => setEditDate(sess.date)}
+              onLongPress={() => confirmDelete(sess)}
+              style={{
+                backgroundColor: C.bgSecondary,
+                borderRadius: 8,
+                padding: 12,
+                marginBottom: 6,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>
+                  {sess.date}
+                </Text>
+                <Text
+                  style={{
+                    color: C.textPrimary,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  {fmtMinutes(sess.minutes)}
+                </Text>
+              </View>
+              {sess.note && (
+                <Text
+                  style={{
+                    color: C.textSecondary,
+                    fontSize: 12,
+                    marginTop: 4,
+                  }}
+                >
+                  {sess.note}
+                </Text>
+              )}
+            </Pressable>
+          ))}
+          {sessions.length === 0 && (
+            <Text style={{ color: C.textMuted, fontSize: 12 }}>
+              No sessions logged yet.
+            </Text>
+          )}
+        </View>
+      )}
+
+      <SessionLogModal
+        gameId={gameId}
+        visible={editDate != null}
+        date={editDate ?? undefined}
+        onClose={(changed) => {
+          setEditDate(null);
+          if (changed) onChanged();
+        }}
+      />
+    </View>
   );
 }
 

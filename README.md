@@ -10,7 +10,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 
 ### Games view
 - All games grouped by derived state: **Current**, **Backlog (started)**, **Backlog**, **On Hold**, **Completed**
-- **Played Today** zone with one-tap session logging (±15 min stepper)
+- **Played Today** zone with one-tap session logging (±15 min stepper or direct minutes input)
 - **Recently Played** section (configurable window, default 14 days) — mutually exclusive with Current so games don't appear twice
 - Search by title + filter by genre/platform tag chips
 - Per-game 🔥 streak counter with configurable grace period
@@ -35,7 +35,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - Three progress methods: **checkbox milestones** (default, supports stretch goals beyond 100%), **manual %**, **walkthrough position**
 - Walkthrough tab: paste URL + full text; in-app scrollable reader with position marker; GameFAQs search shortcut
 - Notes tab: freeform timestamped notes
-- Sessions tab: full play history
+- Sessions tab: per-game **session calendar** (see below)
 - On Hold toggle (with reason) at the bottom, above Delete
 
 ### Progress
@@ -44,8 +44,14 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - Walkthrough text: position in text ÷ total length = %
 - Progress bar renders gracefully above 100% (gold colour)
 
-### Calendar
-- Month grid; tap any day to see sessions, games played, and notes
+### Game detail — Sessions tab
+- **📅 Calendar / ☰ List toggle** — switch between a heat-map month grid and a flat list
+- **`← session` / `session →` arrows** jump between this game's actual play-session dates, auto-snapping the visible month; arrows are greyed out at the first/last session
+- **`‹ ›` month steppers** + tap the month label to jump back to today — for reaching months with no sessions (e.g. to backfill a forgotten day)
+- **Tap any day** → selected-day panel: shows minutes + note with **✎ Edit** and **🗑 Delete** buttons; empty days show **+ Add session**
+- **List view**: tap a row to edit, long-press to delete
+- Editing opens the same Session Log modal pre-filled with the day's existing data; saving upserts (add or replace)
+- **Steam dump cleanup**: deleting or shrinking a Steam-attributed session (note contains "Last played on Steam") prompts **Keep time** (moves removed minutes into undated base playtime — lifetime total stays accurate) or **Discard time** (permanent). "Keep time" is the default. The sync watermark is independent of local sessions, so discarded time is never re-added on the next sync — but a 0-minute marker for that date may reappear if Steam still reports it as the last-played day
 
 ### Stats
 - Playtime totals: week / month / year / all-time
@@ -127,6 +133,7 @@ app/
 │   │   └── SettingsScreen.tsx
 │   ├── components/
 │   │   ├── ui.tsx            # Shared: Btn, Field, Input, Cover, GameRow, Section, ProgressBar, TagRow, FilterChip
+│   │   ├── MonthGrid.tsx     # Reusable month heat-map grid (used by CalendarScreen + game Sessions tab)
 │   │   └── SessionLogModal.tsx # Session log + genre blocker panel
 │   ├── types.ts              # Game, Session, Milestone, Note, GameWithMeta, StateGroup, …
 │   └── theme.ts              # Colour palette + tag-type colours

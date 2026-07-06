@@ -9,6 +9,7 @@ import {
   RangeGameSummary,
 } from "../db/repo";
 import { fmtMinutes, isoDate, playDay } from "../logic/derive";
+import { MonthGrid } from "../components/MonthGrid";
 
 type Scope = "day" | "month" | "year";
 
@@ -117,16 +118,6 @@ export default function CalendarScreen() {
   );
 
   const monthName = first.toLocaleDateString(undefined, { month: "long" });
-  const startPad = (first.getDay() + 6) % 7; // Monday first
-  const days = last.getDate();
-  const maxMinutes = Math.max(60, ...Object.values(dayTotals));
-  const today = playDay();
-
-  const cells: (number | null)[] = [
-    ...Array(startPad).fill(null),
-    ...Array.from({ length: days }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
     <ScrollView
@@ -160,48 +151,16 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      <View style={cal.grid}>
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-          <Text key={d} style={cal.header}>
-            {d}
-          </Text>
-        ))}
-        {cells.map((day, i) => {
-          if (day == null) return <View key={i} style={cal.cell} />;
-          const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(
-            day
-          ).padStart(2, "0")}`;
-          const minutes = dayTotals[date] ?? 0;
-          const intensity = minutes > 0 ? 0.08 + 0.5 * (minutes / maxMinutes) : 0;
-          return (
-            <Pressable
-              key={i}
-              style={[
-                cal.cell,
-                {
-                  backgroundColor:
-                    intensity > 0
-                      ? `rgba(78,204,163,${intensity.toFixed(2)})`
-                      : C.bgSecondary,
-                  borderWidth: date === today ? 2 : selected === date ? 1 : 0,
-                  borderColor: date === today ? C.accent : C.progressFill,
-                },
-              ]}
-              onPress={() => {
-                setSelected(date);
-                setScope("day");
-              }}
-            >
-              <Text style={{ color: C.textPrimary, fontSize: 10 }}>{day}</Text>
-              {minutes > 0 && (
-                <Text style={{ color: C.textMuted, fontSize: 8 }}>
-                  {fmtMinutes(minutes)}
-                </Text>
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
+      <MonthGrid
+        year={year}
+        month={month}
+        dayTotals={dayTotals}
+        selected={selected}
+        onSelectDay={(date) => {
+          setSelected(date);
+          setScope("day");
+        }}
+      />
 
       <View style={cal.detail}>
         <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: "600", marginBottom: 10 }}>
@@ -335,25 +294,6 @@ const cal = themedStyles(() => ({
     borderRadius: 6,
     paddingHorizontal: 16,
     paddingVertical: 8,
-  },
-  grid: {
-    flexDirection: "row" as const,
-    flexWrap: "wrap" as const,
-    marginBottom: 16,
-  },
-  header: {
-    width: `${100 / 7}%` as any,
-    textAlign: "center" as const,
-    color: C.textMuted,
-    fontSize: 10,
-    paddingVertical: 6,
-  },
-  cell: {
-    width: `${100 / 7}%` as any,
-    aspectRatio: 1,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    borderRadius: 8,
   },
   detail: {
     backgroundColor: C.bgSecondary,
