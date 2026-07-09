@@ -1,5 +1,6 @@
 import React from "react";
 import { Text } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -34,6 +35,7 @@ const ICONS: Record<string, string> = {
 function Tabs() {
   const imp = useImportState();
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgPrimary }} edges={["top"]}>
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -50,6 +52,7 @@ function Tabs() {
       <Tab.Screen name="Settings" component={SettingsScreen} />
       {imp.active && <Tab.Screen name="Import" component={ImportScreen} />}
     </Tab.Navigator>
+    </SafeAreaView>
   );
 }
 
@@ -67,6 +70,7 @@ export default function App() {
     },
   };
   return (
+    <SafeAreaProvider>
     <NavigationContainer theme={navTheme}>
       <StatusBar style={currentStatusBarStyle()} />
       <Stack.Navigator
@@ -80,5 +84,6 @@ export default function App() {
         <Stack.Screen name="AddGame" component={AddGameScreen} options={{ title: "Add Game", presentation: "modal" }} />
       </Stack.Navigator>
     </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

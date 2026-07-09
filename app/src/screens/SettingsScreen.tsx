@@ -8,6 +8,7 @@ import {
   TAG_COLOR_KEYS,
   clearOverrides,
   hasOverrides,
+  initTheme,
   setColorOverride,
   setTheme,
   themedStyles,
@@ -18,7 +19,12 @@ import { getSetting, setSetting, SETTINGS, LLM_DEFAULTS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
 import { startIgdbMetadataSync } from "../services/igdbSync";
 import { saveLlmConfig, verifyLlm } from "../services/llm";
-import { pickAndImport, shareExport } from "../services/exportImport";
+import {
+  pickExportFile,
+  shareExport,
+  importFromJson,
+  importEncrypted,
+} from "../services/exportImport";
 import { useNavigation } from "@react-navigation/native";
 import { pickAndStartCsvImport } from "../services/csvImport";
 import { startSteamImport } from "../services/steam";
@@ -44,6 +50,30 @@ export default function SettingsScreen() {
   const [llmBaseUrl, setLlmBaseUrl] = useState(getSetting(SETTINGS.llmBaseUrl, LLM_DEFAULTS.baseUrl));
   const [llmModel, setLlmModel] = useState(getSetting(SETTINGS.llmModel, LLM_DEFAULTS.model));
   const [llmBusy, setLlmBusy] = useState(false);
+
+  /**
+   * Re-read every settings field from SQLite into component state.
+   * Needed after an import: the DB is replaced underneath this mounted
+   * screen, but useState initializers only ran at mount — without this the
+   * inputs keep showing stale (e.g. empty) values, and a subsequent "Save"
+   * would overwrite the freshly imported keys with those stale values.
+   */
+  const reloadFromDb = () => {
+    setRecentDays(getSetting(SETTINGS.recentDays, "14"));
+    setCurrentWindow(getSetting(SETTINGS.currentWindow, "year"));
+    setGrace(getSetting(SETTINGS.streakGrace, "1"));
+    setPlayedMin(getSetting(SETTINGS.playedThreshold, "29"));
+    setThreshold(getSetting(SETTINGS.genreBlockThreshold, "1"));
+    setIgdbId(getSetting(SETTINGS.igdbClientId, ""));
+    setIgdbSecret(getSetting(SETTINGS.igdbClientSecret, ""));
+    setSteamKey(getSetting(SETTINGS.steamApiKey, ""));
+    setSteamId(getSetting(SETTINGS.steamId, ""));
+    setLlmToken(getSetting(SETTINGS.llmToken, ""));
+    setLlmBaseUrl(getSetting(SETTINGS.llmBaseUrl, LLM_DEFAULTS.baseUrl));
+    setLlmModel(getSetting(SETTINGS.llmModel, LLM_DEFAULTS.model));
+    // imported theme + color overrides take effect without an app restart
+    initTheme();
+  };
 
   const saveLlm = async () => {
     saveLlmConfig(llmToken, llmBaseUrl, llmModel);
@@ -185,21 +215,77 @@ export default function SettingsScreen() {
       <Text style={h.title}>Backup & Sync</Text>
       <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
         Export your full library as JSON (share to iCloud Drive / Google Drive),
-        import it on another device. Import replaces all local data.
+        import it on another device. Import replaces all local data.{"\n\n"}
+        🔒 Encrypted export protects your API keys with a passphrase
+        (AES-256-GCM). Plain export works too — import auto-detects both.
       </Text>
-      <View style={{ flexDirection: "row", gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
         <Btn
-          label="Export JSON"
+          label="🔒 Export encrypted"
+          kind="secondary"
+          onPress={() =>
+            Alert.prompt(
+              "Set export passphrase",
+              "Choose a passphrase to encrypt the backup. You'll need it to import on another device.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Export",
+                  onPress: (pw?: string) => {
+                    if (!pw?.trim()) {
+                      Alert.alert("No passphrase", "Passphrase is required for encrypted export.");
+                      return;
+                    }
+                    shareExport(pw.trim()).catch((e) =>
+                      Alert.alert("Export failed", String(e))
+                    );
+                  },
+                },
+              ],
+              "secure-text"
+            )
+          }
+        />
+        <Btn
+          label="Export plain"
           kind="secondary"
           onPress={() => shareExport().catch((e) => Alert.alert("Export failed", String(e)))}
         />
         <Btn
-          label="Import JSON"
+          label="Import"
           kind="secondary"
           onPress={async () => {
             try {
-              const n = await pickAndImport();
-              if (n >= 0) Alert.alert("Imported", `${n} games restored.`);
+              const picked = await pickExportFile();
+              if (!picked) return;
+
+              if (picked.encrypted) {
+                Alert.prompt(
+                  "Encrypted backup",
+                  "Enter the passphrase used when exporting.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Decrypt & import",
+                      onPress: async (pw?: string) => {
+                        if (!pw?.trim()) return;
+                        try {
+                          const n = await importEncrypted(picked.raw, pw.trim());
+                          reloadFromDb();
+                          Alert.alert("Imported", `${n} games restored.`);
+                        } catch (e: any) {
+                          Alert.alert("Import failed", String(e?.message ?? e));
+                        }
+                      },
+                    },
+                  ],
+                  "secure-text"
+                );
+              } else {
+                const n = importFromJson(picked.raw);
+                reloadFromDb();
+                Alert.alert("Imported", `${n} games restored.`);
+              }
             } catch (e) {
               Alert.alert("Import failed", String(e));
             }
