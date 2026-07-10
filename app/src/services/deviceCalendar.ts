@@ -41,7 +41,9 @@ export function setLinkedCalendarIds(ids: string[]): void {
 
 /** Prompt for read access. Returns true when granted. */
 export async function requestCalendarAccess(): Promise<boolean> {
-  const res = await Calendar.requestCalendarPermissions();
+  // writeOnly: false = request full read access (iOS write-only mode
+  // restricts to creating events only — useless for an overlay).
+  const res = await Calendar.requestCalendarPermissions(false);
   return res.granted;
 }
 
