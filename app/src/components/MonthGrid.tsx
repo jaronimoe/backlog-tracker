@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { C, themedStyles } from "../theme";
 import { fmtMinutes, playDay } from "../logic/derive";
+import type { DayEvent } from "../services/deviceCalendar";
 
 /**
  * Month calendar grid (Monday-first) with playtime heat shading.
@@ -13,12 +14,15 @@ export function MonthGrid({
   dayTotals,
   selected,
   onSelectDay,
+  dayEvents,
 }: {
   year: number;
   month: number; // 0-based
   dayTotals: Record<string, number>;
   selected: string | null;
   onSelectDay: (date: string) => void;
+  /** Device calendar events per ISO day — shown faded on session-free days. */
+  dayEvents?: Record<string, DayEvent[]>;
 }) {
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
@@ -65,11 +69,24 @@ export function MonthGrid({
             onPress={() => onSelectDay(date)}
           >
             <Text style={{ color: C.textPrimary, fontSize: 10 }}>{day}</Text>
-            {minutes > 0 && (
+            {minutes > 0 ? (
               <Text style={{ color: C.textMuted, fontSize: 8 }}>
                 {fmtMinutes(minutes)}
               </Text>
-            )}
+            ) : dayEvents?.[date]?.length ? (
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: C.textMuted,
+                  fontSize: 7,
+                  opacity: 0.65,
+                  paddingHorizontal: 2,
+                  maxWidth: "100%" as any,
+                }}
+              >
+                {dayEvents[date][0].title}
+              </Text>
+            ) : null}
           </Pressable>
         );
       })}

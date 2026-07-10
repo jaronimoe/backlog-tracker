@@ -10,6 +10,7 @@ import {
 } from "../db/repo";
 import { fmtMinutes, isoDate, playDay } from "../logic/derive";
 import { MonthGrid } from "../components/MonthGrid";
+import { DayEvent, eventsByDay } from "../services/deviceCalendar";
 
 type Scope = "day" | "month" | "year";
 
@@ -31,6 +32,7 @@ export default function CalendarScreen() {
     started: [],
     completed: [],
   });
+  const [dayEvents, setDayEvents] = useState<Record<string, DayEvent[]>>({});
 
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
@@ -90,6 +92,14 @@ export default function CalendarScreen() {
       setPeriodTotal(periodRows.reduce((a, x) => a + x.minutes, 0));
     }
     setSummary(startedCompletedInRange(r.from, r.to));
+    // Device calendar overlay — async, fails soft to {} when not linked.
+    let cancelled = false;
+    eventsByDay(isoDate(first), isoDate(last)).then((ev) => {
+      if (!cancelled) setDayEvents(ev);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [year, month, selected, scope]);
 
   useFocusEffect(reload);
@@ -160,6 +170,7 @@ export default function CalendarScreen() {
           setSelected(date);
           setScope("day");
         }}
+        dayEvents={dayEvents}
       />
 
       <View style={cal.detail}>
@@ -167,6 +178,24 @@ export default function CalendarScreen() {
           {range().label}
           {periodTotal > 0 ? ` — ${fmtMinutes(periodTotal)} total` : ""}
         </Text>
+        {scope === "day" && (dayEvents[selected]?.length ?? 0) > 0 && (
+          <View style={{ marginBottom: 8 }}>
+            {dayEvents[selected].map((ev, i) => (
+              <Text
+                key={i}
+                style={{
+                  color: C.textMuted,
+                  fontSize: 11,
+                  fontStyle: "italic",
+                  opacity: 0.8,
+                }}
+              >
+                📅 {ev.title}
+                {ev.allDay ? "" : " (timed)"}
+              </Text>
+            ))}
+          </View>
+        )}
         {scope === "day" ? (
           daySessions.length === 0 ? (
             <Text style={{ color: C.textMuted, fontSize: 12 }}>No sessions.</Text>

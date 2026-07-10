@@ -28,6 +28,13 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { pickAndStartCsvImport } from "../services/csvImport";
 import { startSteamImport } from "../services/steam";
+import {
+  DeviceCalendarInfo,
+  getLinkedCalendarIds,
+  listDeviceCalendars,
+  requestCalendarAccess,
+  setLinkedCalendarIds,
+} from "../services/deviceCalendar";
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -144,6 +151,9 @@ export default function SettingsScreen() {
       <Field label="Streak grace period (days of break tolerated: 1–3)">
         <Input value={grace} onChangeText={setGrace} keyboardType="numeric" />
       </Field>
+
+      <Text style={h.title}>Device calendars</Text>
+      <DeviceCalendarSection />
 
       <Text style={h.title}>Genre Blocker</Text>
       <Field label="Warn when ≥ N games of the genre are already active">
@@ -375,6 +385,134 @@ export default function SettingsScreen() {
         />
       </View>
     </ScrollView>
+  );
+}
+
+function DeviceCalendarSection() {
+  const [linked, setLinked] = useState<string[]>(getLinkedCalendarIds());
+  const [available, setAvailable] = useState<DeviceCalendarInfo[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadCalendars = async () => {
+    setBusy(true);
+    try {
+      const granted = await requestCalendarAccess();
+      if (!granted) {
+        Alert.alert(
+          "Permission denied",
+          "Calendar access is needed to overlay events. You can grant it in system settings."
+        );
+        return;
+      }
+      setAvailable(await listDeviceCalendars());
+    } catch (e: any) {
+      Alert.alert("Could not read calendars", String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (id: string) => {
+    const next = linked.includes(id)
+      ? linked.filter((x) => x !== id)
+      : [...linked, id];
+    setLinked(next);
+    setLinkedCalendarIds(next);
+  };
+
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+        Overlays events from calendars synced on this device (Google, Apple,
+        Outlook, …) on the play calendar — context for gaps like travel or
+        busy weeks. Read-only; events are never stored. Streaks are not
+        affected.
+      </Text>
+      {available === null ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Btn
+            label={busy ? "Reading calendars…" : "Choose calendars…"}
+            kind="secondary"
+            onPress={loadCalendars}
+          />
+          <Text style={{ color: C.textMuted, fontSize: 11 }}>
+            {linked.length > 0
+              ? `${linked.length} linked`
+              : "none linked"}
+          </Text>
+        </View>
+      ) : (
+        <View>
+          {available.length === 0 && (
+            <Text style={{ color: C.textMuted, fontSize: 12 }}>
+              No calendars found on this device.
+            </Text>
+          )}
+          {available.map((cal) => {
+            const on = linked.includes(cal.id);
+            return (
+              <Pressable
+                key={cal.id}
+                onPress={() => toggle(cal.id)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingVertical: 6,
+                }}
+                hitSlop={4}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: on ? C.accent : C.textMuted,
+                    backgroundColor: on ? C.accent : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {on && (
+                    <Text style={{ color: C.bgPrimary, fontSize: 13, fontWeight: "700" }}>✓</Text>
+                  )}
+                </View>
+                {cal.color ? (
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      backgroundColor: cal.color,
+                    }}
+                  />
+                ) : null}
+                <Text style={{ color: C.textPrimary, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                  {cal.title}
+                  {cal.source ? (
+                    <Text style={{ color: C.textMuted, fontSize: 11 }}>
+                      {"  "}· {cal.source}
+                    </Text>
+                  ) : null}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {linked.length > 0 && (
+            <Btn
+              label="Unlink all"
+              kind="secondary"
+              onPress={() => {
+                setLinked([]);
+                setLinkedCalendarIds([]);
+              }}
+              style={{ marginTop: 8 }}
+            />
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 

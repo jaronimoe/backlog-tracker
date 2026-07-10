@@ -256,6 +256,31 @@ Only the value portion renders in the UI. Typed tags sort before plain tags. Eac
 
 ---
 
+## Device calendar overlay ✅
+
+Overlays events from calendars already synced on the device (Google, Apple,
+Outlook, …) on the play calendar to give context for gaps in activity
+(travel, busy weeks). Implemented in `src/services/deviceCalendar.ts` via
+`expo-calendar` — no API keys or OAuth, just a permission prompt.
+
+- **Settings → Device calendars:** "Choose calendars…" requests read
+  permission and lists all device calendars with checkboxes (colour dot +
+  account source shown). Selection is stored as a JSON list of calendar IDs
+  (`device_calendar_ids` setting); empty = overlay off. "Unlink all" clears it.
+- **Calendar screen:** session-free days show a faded, truncated label of the
+  first event that day in the month grid; day scope lists all events for the
+  selected day (📅, italic, timed events marked). All-day events sort first —
+  they're the useful context (trips, holidays).
+- **Lightweight:** read-only, fetched on-demand per visible month; events are
+  never stored. Fails soft (empty overlay) when unlinked, permission revoked,
+  or the fetch errors. All-day events are re-anchored from UTC midnight to
+  local dates to avoid off-by-one-day shifts; multi-day events appear on every
+  day they span.
+- Streaks are **not** adjusted — a vacation breaking a streak is honest
+  signal, not noise.
+- The per-game session calendar (`MonthGrid` is shared) does **not** show the
+  overlay; it's global-calendar-only.
+
 ## AI recap — “Where was I?” ✅
 
 On-demand LLM recap for **walkthrough-tracked games**: summarizes what the

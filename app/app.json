@@ -26,6 +26,12 @@
     "plugins": [
       "expo-sqlite",
       "expo-sharing",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "The app reads your calendar to show context (travel, busy periods) for gaps in your play history. It never writes to your calendar."
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "extra": {
