@@ -47,7 +47,8 @@ import {
   toggleMilestone,
   updateGame,
 } from "../db/repo";
-import { fmtMinutes, playDay } from "../logic/derive";
+import { fmtMinutes, isoDate, playDay } from "../logic/derive";
+import { DayEvent, eventsByDay } from "../services/deviceCalendar";
 import { canRecap, getRecap, llmConfigured } from "../services/llm";
 import {
   STEAM_MARKER_NOTE,
@@ -687,6 +688,20 @@ function SessionsTab({
     m: Number(latest.slice(5, 7)) - 1,
   });
   const [editDate, setEditDate] = useState<string | null>(null);
+  const [dayEvents, setDayEvents] = useState<Record<string, DayEvent[]>>({});
+
+  // Device calendar overlay for the visible month — fails soft to {}.
+  useEffect(() => {
+    let cancelled = false;
+    const first = new Date(ym.y, ym.m, 1);
+    const last = new Date(ym.y, ym.m + 1, 0);
+    eventsByDay(isoDate(first), isoDate(last)).then((ev) => {
+      if (!cancelled) setDayEvents(ev);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ym.y, ym.m]);
 
   const dates = sessions.map((s) => s.date).sort(); // ascending
   const prevDate = [...dates].reverse().find((d) => d < sel) ?? null;
@@ -848,6 +863,7 @@ function SessionsTab({
             dayTotals={dayTotals}
             selected={sel}
             onSelectDay={setSel}
+            dayEvents={dayEvents}
           />
 
           {/* selected-day panel */}
@@ -868,6 +884,22 @@ function SessionsTab({
             >
               {sel}
             </Text>
+            {(dayEvents[sel]?.length ?? 0) > 0 && (
+              <View style={{ marginBottom: 6 }}>
+                {dayEvents[sel].map((ev, i) => (
+                  <Text
+                    key={i}
+                    style={{
+                      color: C.textSecondary,
+                      fontSize: 12,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    📅 {ev.title}
+                  </Text>
+                ))}
+              </View>
+            )}
             {selSession ? (
               <>
                 <Text

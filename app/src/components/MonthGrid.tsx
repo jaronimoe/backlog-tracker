@@ -50,6 +50,7 @@ export function MonthGrid({
           day
         ).padStart(2, "0")}`;
         const minutes = dayTotals[date] ?? 0;
+        const hasEvents = !!dayEvents?.[date]?.length;
         const intensity =
           minutes > 0 ? 0.08 + 0.5 * (minutes / maxMinutes) : 0;
         return (
@@ -62,8 +63,14 @@ export function MonthGrid({
                   intensity > 0
                     ? `rgba(78,204,163,${intensity.toFixed(2)})`
                     : C.bgSecondary,
-                borderWidth: date === today ? 2 : selected === date ? 1 : 0,
-                borderColor: date === today ? C.accent : C.progressFill,
+                borderWidth:
+                  date === today || hasEvents ? 2 : selected === date ? 1 : 0,
+                borderColor:
+                  date === today
+                    ? C.accent
+                    : hasEvents
+                    ? C.accentSecondary
+                    : C.progressFill,
               },
             ]}
             onPress={() => onSelectDay(date)}
@@ -73,18 +80,18 @@ export function MonthGrid({
               <Text style={{ color: C.textMuted, fontSize: 8 }}>
                 {fmtMinutes(minutes)}
               </Text>
-            ) : dayEvents?.[date]?.length ? (
+            ) : hasEvents ? (
               <Text
                 numberOfLines={1}
                 style={{
-                  color: C.textMuted,
-                  fontSize: 7,
-                  opacity: 0.65,
+                  color: C.textSecondary,
+                  fontSize: 8,
+                  fontWeight: "500" as const,
                   paddingHorizontal: 2,
                   maxWidth: "100%" as any,
                 }}
               >
-                {dayEvents[date][0].title}
+                {dayEvents![date][0].title}
               </Text>
             ) : null}
           </Pressable>

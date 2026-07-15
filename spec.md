@@ -267,10 +267,11 @@ Outlook, …) on the play calendar to give context for gaps in activity
   permission and lists all device calendars with checkboxes (colour dot +
   account source shown). Selection is stored as a JSON list of calendar IDs
   (`device_calendar_ids` setting); empty = overlay off. "Unlink all" clears it.
-- **Calendar screen:** session-free days show a faded, truncated label of the
-  first event that day in the month grid; day scope lists all events for the
-  selected day (📅, italic, timed events marked). All-day events sort first —
-  they're the useful context (trips, holidays).
+- **Calendar screen:** event days get a thick `accentSecondary` border in the
+  month grid (today's `accent` border wins); session-free days additionally
+  show a truncated label of the first event. Day scope lists all events for
+  the selected day (📅, italic, timed events marked). All-day events sort
+  first — they're the useful context (trips, holidays).
 - **Lightweight:** read-only, fetched on-demand per visible month; events are
   never stored. Fails soft (empty overlay) when unlinked, permission revoked,
   or the fetch errors. All-day events are re-anchored from UTC midnight to
@@ -278,8 +279,8 @@ Outlook, …) on the play calendar to give context for gaps in activity
   day they span.
 - Streaks are **not** adjusted — a vacation breaking a streak is honest
   signal, not noise.
-- The per-game session calendar (`MonthGrid` is shared) does **not** show the
-  overlay; it's global-calendar-only.
+- The per-game session calendar (Game Detail → Sessions) shows the same
+  overlay, including events in the selected-day panel.
 
 ## AI recap — “Where was I?” ✅
 
