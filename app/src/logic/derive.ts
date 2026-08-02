@@ -91,6 +91,9 @@ export function deriveGroup(
   const started =
     totalMinutes > cfg.playedThreshold || game.start_date != null;
   if (!started) return "backlog";
+  // Manual shelve override (swipe on Games screen): forces the game out of
+  // Current. Cleared automatically when a session on/after that date is logged.
+  if (game.shelved_at) return "backlog_started";
   // Most recent activity signal: a logged/overridden play date or the start date.
   const refDate =
     [lastPlayed, game.start_date].filter(Boolean).sort().pop() ?? null;

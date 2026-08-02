@@ -14,6 +14,7 @@ export interface Game {
   last_played_override: string | null; // ISO date
   on_hold: number; // 0/1
   on_hold_note: string | null;
+  shelved_at: string | null; // ISO date; manual "move to backlog" override
   on_mind: number; // 0/1
   completed_at: string | null;
   rating: number | null; // 1–5 stars

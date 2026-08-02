@@ -112,6 +112,26 @@ export function setOnHold(id: number, on: boolean, note: string | null) {
   ]);
 }
 
+/**
+ * Manual override: shelve a started game out of Current into Backlog
+ * (started), or bring it back. Shelving stamps today's play day; logging a
+ * session on/after that date clears the flag automatically.
+ */
+export function setShelved(id: number, on: boolean) {
+  db.runSync("UPDATE games SET shelved_at = ? WHERE id = ?", [
+    on ? playDay() : null,
+    id,
+  ]);
+}
+
+/** A play event on/after the shelve date un-shelves the game. */
+function clearShelvedIfPlayed(gameId: number, date: string) {
+  db.runSync(
+    "UPDATE games SET shelved_at = NULL WHERE id = ? AND shelved_at IS NOT NULL AND shelved_at <= ?",
+    [gameId, date]
+  );
+}
+
 // ---------- external ids & dedup ----------
 
 /** Game already linked to this (source, external_id), or null. */
@@ -191,6 +211,7 @@ export function logSession(
        note = COALESCE(excluded.note, sessions.note)`,
     [gameId, date, minutes, note ?? null]
   );
+  clearShelvedIfPlayed(gameId, date);
 }
 
 /**
@@ -212,6 +233,7 @@ export function accumulateSession(
        note = COALESCE(sessions.note, excluded.note)`,
     [gameId, date, minutes, note ?? null]
   );
+  clearShelvedIfPlayed(gameId, date);
 }
 
 /**
@@ -229,6 +251,7 @@ export function ensureMarkerSession(
     "INSERT OR IGNORE INTO sessions (game_id, date, minutes, note) VALUES (?, ?, 0, ?)",
     [gameId, date, note ?? null]
   );
+  clearShelvedIfPlayed(gameId, date);
 }
 
 export function sessionFor(gameId: number, date: string): Session | null {

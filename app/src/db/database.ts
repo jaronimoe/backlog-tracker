@@ -145,6 +145,12 @@ const MIGRATIONS: string[][] = [
          AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')
          AND id IN (SELECT game_id FROM sessions GROUP BY game_id HAVING SUM(minutes) > 0)`,
   ],
+  // v8 — manual shelve override: swiping a game out of Current stamps
+  // shelved_at (play day). deriveGroup() forces such games into
+  // Backlog (started); logging a session on/after that date clears it.
+  [
+    `ALTER TABLE games ADD COLUMN shelved_at TEXT`,
+  ],
 ];
 
 export function migrate() {

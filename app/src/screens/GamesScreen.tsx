@@ -11,7 +11,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { C, themedStyles } from "../theme";
 import { GameRow, Input, SectionHeader } from "../components/ui";
 import { SessionLogModal } from "../components/SessionLogModal";
-import { allGames, sessionsForDay, windowConfig } from "../db/repo";
+import { SwipeableRow } from "../components/SwipeableRow";
+import { allGames, sessionsForDay, setShelved, windowConfig } from "../db/repo";
 import {
   fmtMinutes,
   isRecentlyPlayed,
@@ -166,6 +167,14 @@ export default function GamesScreen({ navigation }: any) {
     []
   );
 
+  const shelve = useCallback(
+    (id: number, on: boolean) => {
+      setShelved(id, on);
+      reload();
+    },
+    [reload]
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.type === "section")
@@ -178,15 +187,39 @@ export default function GamesScreen({ navigation }: any) {
             style={item.first ? undefined : { marginTop: 8 }}
           />
         );
-      return (
+      const g = item.game;
+      const row = (
         <GameRow
-          game={item.game}
-          onPress={() => navigation.navigate("GameDetail", { id: item.game.id })}
-          onPlayedToday={() => setLogGame(item.game.id)}
+          game={g}
+          onPress={() => navigation.navigate("GameDetail", { id: g.id })}
+          onPlayedToday={() => setLogGame(g.id)}
         />
       );
+      // Swipe left to move a Current game into Backlog (started) — or a
+      // manually shelved game back. The flag clears itself on the next
+      // logged session, so "→ Current" is only offered while it's set.
+      if (
+        g.group === "current" &&
+        (item.section === "current" || item.section === "recent")
+      )
+        return (
+          <SwipeableRow label="📦 → Backlog" onAction={() => shelve(g.id, true)}>
+            {row}
+          </SwipeableRow>
+        );
+      if (item.section === "backlog_started" && g.shelved_at)
+        return (
+          <SwipeableRow
+            label="▶ → Current"
+            color={C.progressFill}
+            onAction={() => shelve(g.id, false)}
+          >
+            {row}
+          </SwipeableRow>
+        );
+      return row;
     },
-    [navigation, toggleSection]
+    [navigation, toggleSection, shelve]
   );
 
   const dateLabel = new Date().toLocaleDateString(undefined, {

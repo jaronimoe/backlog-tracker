@@ -10,12 +10,14 @@
 |---|---|
 | **Current** | Last played **or started** within the current window (default: this calendar year; user-switchable to N days). The window is checked against the most recent of `last_played` and `start_date` |
 | **Recently Played** | Last played within the recent window (default 14 days; configurable). Shown separately on the Games screen; **mutually exclusive with Current** — a game appears in only one section |
-| **Backlog (started)** | Total playtime above the played threshold (default 29 min) or a `start_date`, but not within the current window |
+| **Backlog (started)** | Total playtime above the played threshold (default 29 min) or a `start_date`, but not within the current window — or manually shelved (see swipe below) |
 | **Backlog** | Total playtime ≤ played threshold and no `start_date` — a brief boot-up doesn't count as played |
 | **On Hold** | Manual flag (requires a reason note). Overrides drift. Shown at the bottom of game detail, above Delete |
 | **Completed** | `completed_at` set, or progress ≥ 100% |
 
 State is computed by `deriveGroup()` in `src/logic/derive.ts`. Never stored.
+
+**Shelve override:** swiping a Current game left on the Games screen stamps `shelved_at` (the only stored state hint), forcing it into Backlog (started). Logging any session on/after that date — including via Steam sync — clears the flag automatically, so the game drifts back to Current the moment it's played again.
 
 ---
 
@@ -75,6 +77,7 @@ Three methods per game (switchable):
 - Per-game 🔥 streak counter. Streak = played days; grace period (1/2/3 days) is configurable.
 - Session quick-log modal: ±15 min stepper **plus direct minutes input** (type any value directly).
 - One session per game per calendar day (upsert). Past-midnight (before 5am) counts to previous day.
+- **Swipe left** on a Current (or Recently Played, if Current) game → **📦 → Backlog**: shelves it into Backlog (started). Swipe left on a shelved game in Backlog (started) → **▶ → Current**: un-shelves it. Built on core PanResponder (no gesture-handler dependency); only clearly-horizontal drags are claimed so scrolling/taps are unaffected.
 - **+ Add Game** button in header.
 
 ---
