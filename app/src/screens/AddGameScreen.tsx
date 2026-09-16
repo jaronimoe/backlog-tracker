@@ -104,9 +104,21 @@ export default function AddGameScreen({ navigation }: any) {
   };
 
   const doSave = () => {
-    const importedMinutes =
-      (parseInt(hours || "0", 10) || 0) * 60 + (parseInt(mins || "0", 10) || 0);
+    // Hours/minutes and "Last played" only exist while "Already started" is on;
+    // their state survives switching it off, so ignore them when it is off.
+    const importedMinutes = alreadyStarted
+      ? (parseInt(hours || "0", 10) || 0) * 60 + (parseInt(mins || "0", 10) || 0)
+      : 0;
     const startIso = alreadyStarted ? isoDate(startDate) : null;
+    const lp = alreadyStarted ? lastPlayed.trim() : "";
+    if (
+      lp &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(lp) ||
+        isNaN(new Date(lp + "T12:00").getTime()))
+    ) {
+      Alert.alert("Invalid last-played date", "Use YYYY-MM-DD (or leave empty).");
+      return;
+    }
     const id = addGame({
       title: title.trim(),
       cover_url: picked?.coverUrl ?? null,
@@ -115,7 +127,7 @@ export default function AddGameScreen({ navigation }: any) {
       start_date: startIso,
       start_precision: startIso ? "day" : null,
       imported_minutes: importedMinutes,
-      last_played_override: lastPlayed.trim() || startIso,
+      last_played_override: alreadyStarted ? lp || startIso : null,
       tags,
       walkthrough_url: wtUrl.trim() || null,
     });

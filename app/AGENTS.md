@@ -218,8 +218,10 @@ Tags with that prefix will automatically render in that colour via `Tag` in `ui.
   playtime. Hours in a remaster are not summed with the original — do not add those markers to
   `EDITION_SUFFIX`.
 - The `sessions` table uses `ON CONFLICT ... DO UPDATE` upsert. A second log call on the
-  same day *replaces* minutes (it doesn't add). This is intentional — the session modal
-  always shows the total for the day, not an increment.
+  same day *replaces* minutes and the note (it doesn't add, and a blank note clears the
+  stored one). This is intentional — the session modal always shows the total for the day,
+  not an increment, and the full note for the day. `ensureMarkerSession` is an
+  `INSERT OR IGNORE`, so a Steam marker never overwrites a real session.
 - The Import tab is conditionally rendered: `{imp.active && <Tab.Screen …/>}`. React
   Navigation re-mounts screens when tabs appear/disappear, which is correct behaviour
   for `ImportScreen` (it reads from the store, not local state).

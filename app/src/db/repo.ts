@@ -197,7 +197,11 @@ export function allTags(): string[] {
 
 // ---------- sessions ----------
 
-/** One session per game per calendar day: upsert accumulates. */
+/**
+ * One session per game per calendar day: the upsert *replaces* both the
+ * minutes and the note of an existing day. The session modal always presents
+ * the full state of the day, so passing a null/blank note clears it.
+ */
 export function logSession(
   gameId: number,
   date: string,
@@ -208,7 +212,7 @@ export function logSession(
     `INSERT INTO sessions (game_id, date, minutes, note) VALUES (?, ?, ?, ?)
      ON CONFLICT(game_id, date) DO UPDATE SET
        minutes = excluded.minutes,
-       note = COALESCE(excluded.note, sessions.note)`,
+       note = excluded.note`,
     [gameId, date, minutes, note ?? null]
   );
   clearShelvedIfPlayed(gameId, date);

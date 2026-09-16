@@ -1047,6 +1047,12 @@ function EditGameModal({
         : game.start_date
       : ""
   );
+  const [lastPlayedOverride, setLastPlayedOverride] = useState(
+    game.last_played_override ?? ""
+  );
+  // The override is auto-derived from the start date at creation; once the user
+  // touches the field it is theirs and never auto-follows the start date again.
+  const [overrideEdited, setOverrideEdited] = useState(false);
   const [impHours, setImpHours] = useState(String(Math.floor(game.imported_minutes / 60)));
   const [impMins, setImpMins] = useState(String(game.imported_minutes % 60));
   const [completedAt, setCompletedAt] = useState(game.completed_at ?? "");
@@ -1068,6 +1074,22 @@ function EditGameModal({
       Alert.alert("Invalid completed date", "Use YYYY-MM-DD (or leave empty).");
       return;
     }
+    let override = lastPlayedOverride.trim();
+    if (override && !/^\d{4}-\d{2}-\d{2}$/.test(override)) {
+      Alert.alert("Invalid last-played date", "Use YYYY-MM-DD (or leave empty).");
+      return;
+    }
+    // Auto-follow: the override still holds the old start date (addGame copies
+    // it at creation) and the user did not edit it here, so it was derived, not
+    // chosen — keep it in sync with the corrected start date.
+    if (
+      !overrideEdited &&
+      start.date !== game.start_date &&
+      game.last_played_override != null &&
+      game.last_played_override === game.start_date
+    ) {
+      override = start.date ?? "";
+    }
     const importedMinutes =
       (parseInt(impHours || "0", 10) || 0) * 60 + (parseInt(impMins || "0", 10) || 0);
     updateGame(game.id, {
@@ -1077,6 +1099,7 @@ function EditGameModal({
       cover_url: coverUrl.trim() || null,
       start_date: start.date,
       start_precision: start.precision,
+      last_played_override: override || null,
       imported_minutes: importedMinutes,
       completed_at: completed || null,
       rating,
@@ -1114,6 +1137,17 @@ function EditGameModal({
                 value={startDate}
                 onChange={setStartDate}
                 placeholder="2021"
+                maximumDate={new Date()}
+              />
+            </Field>
+            <Field label="Last played override (optional — leave empty to use logged sessions only)">
+              <DateField
+                value={lastPlayedOverride}
+                onChange={(v) => {
+                  setOverrideEdited(true);
+                  setLastPlayedOverride(v);
+                }}
+                placeholder="YYYY-MM-DD"
                 maximumDate={new Date()}
               />
             </Field>
