@@ -19,6 +19,7 @@ import {
   playDay,
   splitTag,
 } from "../logic/derive";
+import { STEAM_MARKER_NOTE } from "../services/steam";
 import { GameWithMeta, StateGroup } from "../types";
 
 const GROUPS: { key: StateGroup; label: string }[] = [
@@ -322,8 +323,13 @@ export default function GamesScreen({ navigation }: any) {
                     {sess.title}
                   </Text>
                   <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 2 }}>
-                    {fmtMinutes(sess.minutes)} today
-                    {sess.note ? ` — ${sess.note}` : ""}
+                    {sess.minutes === 0 && sess.note?.includes(STEAM_MARKER_NOTE)
+                      ? // Steam sync marks the last-played day without minutes;
+                        // tapping the row is how real time gets logged.
+                        "synced from Steam — tap to add time"
+                      : `${fmtMinutes(sess.minutes)} today${
+                          sess.note ? ` — ${sess.note}` : ""
+                        }`}
                   </Text>
                 </View>
                 <Text style={{ color: C.accent, fontSize: 12 }}>Edit</Text>

@@ -4,8 +4,18 @@ import { daysBetween, isoDate, playDay, splitTag } from "../logic/derive";
 import { GameWithMeta } from "../types";
 
 export type Range = "week" | "month" | "year" | "all";
+/** Ranges that are windows over dated sessions ("all" is not date-bounded). */
+export type DatedRange = Exclude<Range, "all">;
 
-export function rangeStart(range: Range, today = new Date()): string | null {
+/**
+ * First day of the range. "Today" is the current *play day* (5-hour shift, the
+ * same day sessions are dated with), so a session logged at 01:00 on Monday —
+ * dated Sunday — still falls in the week that ended that Sunday.
+ */
+export function rangeStart(
+  range: Range,
+  today = new Date(playDay() + "T12:00")
+): string | null {
   if (range === "all") return null;
   const d = new Date(today);
   if (range === "week") {
@@ -19,16 +29,17 @@ export function rangeStart(range: Range, today = new Date()): string | null {
   return isoDate(d);
 }
 
-export function totalPlaytime(range: Range): number {
+/**
+ * Minutes of *dated* play in the range — logged sessions only. All-time
+ * playtime is not a session sum: it is the sum of every game's `totalMinutes`
+ * (see `rankingFromGames`), which also covers Steam and base time.
+ */
+export function totalPlaytime(range: DatedRange): number {
   const from = rangeStart(range);
-  const row = from
-    ? db.getFirstSync<{ t: number }>(
-        "SELECT COALESCE(SUM(minutes),0) t FROM sessions WHERE date >= ?",
-        [from]
-      )
-    : db.getFirstSync<{ t: number }>(
-        "SELECT COALESCE(SUM(minutes),0) t FROM sessions"
-      );
+  const row = db.getFirstSync<{ t: number }>(
+    "SELECT COALESCE(SUM(minutes),0) t FROM sessions WHERE date >= ?",
+    [from]
+  );
   return row?.t ?? 0;
 }
 
@@ -39,15 +50,37 @@ export interface RankEntry {
   sessions: number;
 }
 
-export function ranking(range: Range): RankEntry[] {
+/**
+ * Ranking over dated sessions in the range. Zero-minute Steam marker sessions
+ * are not play, so they never count towards `sessions`.
+ */
+export function ranking(range: DatedRange): RankEntry[] {
   const from = rangeStart(range);
-  const where = from ? "WHERE s.date >= ?" : "";
   return db.getAllSync<RankEntry>(
-    `SELECT s.game_id, g.title, SUM(s.minutes) minutes, COUNT(*) sessions
-     FROM sessions s JOIN games g ON g.id = s.game_id ${where}
+    `SELECT s.game_id, g.title, SUM(s.minutes) minutes,
+            SUM(CASE WHEN s.minutes > 0 THEN 1 ELSE 0 END) sessions
+     FROM sessions s JOIN games g ON g.id = s.game_id WHERE s.date >= ?
      GROUP BY s.game_id ORDER BY minutes DESC`,
-    from ? [from] : []
+    [from]
   );
+}
+
+/**
+ * All-time ranking, from the enriched game list rather than from `sessions`:
+ * `totalMinutes` (= max(Steam total, base + logged sessions)) is *the*
+ * definition of a game's playtime, so Stats must agree with the game rows and
+ * the detail header. Games with no playtime at all are dropped.
+ */
+export function rankingFromGames(games: GameWithMeta[]): RankEntry[] {
+  return games
+    .filter((g) => g.totalMinutes > 0)
+    .map((g) => ({
+      game_id: g.id,
+      title: g.title,
+      minutes: g.totalMinutes,
+      sessions: g.sessionCount,
+    }))
+    .sort((a, b) => b.minutes - a.minutes);
 }
 
 export interface GenreEntry {

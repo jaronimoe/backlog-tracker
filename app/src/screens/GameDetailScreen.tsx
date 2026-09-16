@@ -368,7 +368,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
               fontSize: 13,
               fontWeight: tab === tb ? "600" : "400",
             }}>
-              {tb === "progress" ? "Progress" : tb === "walkthrough" ? "Walkthrough" : tb === "sessions" ? `Sessions (${sessions.length})` : `Notes (${notes.length})`}
+              {tb === "progress" ? "Progress" : tb === "walkthrough" ? "Walkthrough" : tb === "sessions" ? `Sessions (${sessions.filter((s) => s.minutes > 0).length})` : `Notes (${notes.length})`}
             </Text>
           </Pressable>
         ))}

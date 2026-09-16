@@ -432,18 +432,24 @@ function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
     list.push(r.tag);
   }
 
-  // One row per game+day (UNIQUE constraint), ordered so the last entry
-  // is the most recent session and row count equals the session count.
-  const sessBy = new Map<number, { dates: string[]; total: number }>();
+  // One row per game+day (UNIQUE constraint), ordered so the last entry is the
+  // most recent play day. Every date counts as a play day (zero-minute Steam
+  // markers included, so streaks span synced days), but only days with real
+  // minutes count as sessions.
+  const sessBy = new Map<
+    number,
+    { dates: string[]; total: number; count: number }
+  >();
   for (const r of db.getAllSync<{
     game_id: number;
     date: string;
     minutes: number;
   }>(`SELECT game_id, date, minutes FROM sessions ${where} ORDER BY date`, params)) {
     let s = sessBy.get(r.game_id);
-    if (!s) sessBy.set(r.game_id, (s = { dates: [], total: 0 }));
+    if (!s) sessBy.set(r.game_id, (s = { dates: [], total: 0, count: 0 }));
     s.dates.push(r.date);
     s.total += r.minutes;
+    if (r.minutes > 0) s.count++;
   }
 
   // Storefront playtime: Steam's lifetime total per linked appid, summed per
@@ -472,7 +478,7 @@ function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
   return games.map((g) => {
     const sess = sessBy.get(g.id);
     const sessionMinutes = sess?.total ?? 0;
-    const sessionCount = sess?.dates.length ?? 0;
+    const sessionCount = sess?.count ?? 0;
     const lastSession = sess ? sess.dates[sess.dates.length - 1] : null;
     const lastPlayed =
       lastSession && g.last_played_override

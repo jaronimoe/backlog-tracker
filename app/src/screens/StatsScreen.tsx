@@ -11,6 +11,7 @@ import {
   longestToComplete,
   Range,
   ranking,
+  rankingFromGames,
   totalPlaytime,
   wrapItUp,
 } from "../db/stats";
@@ -37,19 +38,29 @@ export default function StatsScreen({ navigation }: any) {
   // Fetch the enriched game list once per focus and derive everything from
   // it; memoized so tapping a range chip doesn't recompute unrelated cards.
   const games = useMemo(() => allGames(), [tick]);
+  // Week/Month/Year are windows over dated sessions; All Time is the sum of
+  // every game's totalMinutes — the same definition the game rows and the
+  // detail header use, so it includes Steam totals and base playtime.
   const totals = useMemo(
     () => ({
       week: totalPlaytime("week"),
       month: totalPlaytime("month"),
       year: totalPlaytime("year"),
-      all: totalPlaytime("all"),
+      all: games.reduce((a, g) => a + g.totalMinutes, 0),
     }),
-    [tick]
+    [tick, games]
   );
-  const byTime = useMemo(() => ranking(playRange), [tick, playRange]);
+  const byTime = useMemo(
+    () =>
+      playRange === "all" ? rankingFromGames(games) : ranking(playRange),
+    [tick, playRange, games]
+  );
   const bySessions = useMemo(
-    () => [...ranking(sessRange)].sort((a, b) => b.sessions - a.sessions),
-    [tick, sessRange]
+    () =>
+      (sessRange === "all" ? rankingFromGames(games) : ranking(sessRange))
+        .filter((r) => r.sessions > 0)
+        .sort((a, b) => b.sessions - a.sessions),
+    [tick, sessRange, games]
   );
   const genres = useMemo(
     () => genreDistribution(genreRange),
@@ -76,6 +87,9 @@ export default function StatsScreen({ navigation }: any) {
             <View key={r.key} style={st.statCard}>
               <Text style={st.statValue}>{fmtMinutes(totals[r.key])}</Text>
               <Text style={st.statLabel}>{r.label}</Text>
+              {r.key === "all" && (
+                <Text style={st.statNote}>incl. Steam & base time</Text>
+              )}
             </View>
           ))}
         </View>
@@ -178,6 +192,7 @@ export default function StatsScreen({ navigation }: any) {
       {/* genre distribution */}
       <Card title="Genre Distribution">
         <RangePicker value={genreRange} onChange={setGenreRange} />
+        <Text style={st.cardNote}>logged sessions only</Text>
         {genres.length === 0 ? <Empty /> : genres.map((g, i) => (
           <View key={g.genre} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <Text style={{ color: C.textSecondary, fontSize: 12, width: 100 }} numberOfLines={1}>
@@ -257,6 +272,13 @@ const st = themedStyles(() => ({
   },
   statValue: { color: C.progressFill, fontSize: 15, fontWeight: "700" as const },
   statLabel: { color: C.textMuted, fontSize: 9, marginTop: 3 },
+  statNote: {
+    color: C.textMuted,
+    fontSize: 8,
+    marginTop: 2,
+    textAlign: "center" as const,
+  },
+  cardNote: { color: C.textMuted, fontSize: 10, marginBottom: 8 },
   rankRow: {
     flexDirection: "row" as const,
     alignItems: "center" as const,

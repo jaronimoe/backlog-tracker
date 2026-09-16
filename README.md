@@ -53,9 +53,10 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - Editing opens the same Session Log modal pre-filled with the day's existing data; saving upserts (add or replace)
 
 ### Stats
-- Playtime totals: week / month / year / all-time
-- Rankings by playtime and session count (same filters)
-- Genre distribution (bar chart)
+- Playtime totals: week / month / year count logged sessions dated in that window; **all-time** is the sum of every game's playtime (`max(Steam total, base + logged sessions)`), so it matches the numbers on the game rows and detail headers
+- Rankings by playtime and session count (same filters) — all-time playtime ranks every game by that same total, ranged rankings only by dated sessions
+- Genre distribution (bar chart) — logged sessions only, since it needs dates
+- Zero-minute markers written by a Steam sync are not sessions: they never add to a session count, but they still show up in Played Today (tap to log real time) and count as play days for streaks
 - **Longest to complete** (days from start to completion)
 - **Wrap it up** tab (almost-finished games ranked by progress %)
 
@@ -171,9 +172,13 @@ All importers (CSV, Steam, future GOG/eShop) use the same pipeline:
 
 States are computed by `deriveGroup()` in `derive.ts` — never stored. Inputs:
 - `last_played`: `MAX(sessions.date, last_played_override)`
-- `totalMinutes`: `SUM(sessions.minutes) + imported_minutes`
+- `totalMinutes`: `max(Steam lifetime total across linked appids, imported_minutes + SUM(sessions.minutes))` — Steam's number and your own records measure the same play, so the larger one is the truer total. This is *the* definition of a game's playtime everywhere in the app (rows, detail header, all-time stats)
 - `progress`: from milestones / manual % / walkthrough position
 - User settings: `currentWindow`, `recentDays`
+
+Session semantics that follow from it:
+- A *session* is a day with minutes on it. The zero-minute marker a Steam sync writes on a game's last-played day is not a session — it is excluded from every session count — but it is a play day, so it feeds streaks and appears in Played Today.
+- Week / month / year windows start from the current **play day** (`playDay()`, shifted back 5 hours), so play logged at 01:00 Monday — dated Sunday — falls in the week that ended that Sunday.
 
 ---
 
