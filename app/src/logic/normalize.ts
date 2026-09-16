@@ -54,7 +54,7 @@ const CAN_DECOMPOSE = (() => {
 })();
 
 /** Combining diacritical marks, i.e. what NFD splits an accent off into. */
-const COMBINING_MARKS = /[̀-ͯ]/g;
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
 
 /** Hand-rolled folding, used only when CAN_DECOMPOSE is false. Lower-case in. */
 const FOLD_FALLBACK: Array<[RegExp, string]> = [
