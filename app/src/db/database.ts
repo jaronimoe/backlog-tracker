@@ -201,6 +201,36 @@ export function migrate() {
   }
 }
 
+/** Schema version the running app is at — the number of migrations it ships. */
+export const CURRENT_SCHEMA_VERSION = MIGRATIONS.length;
+
+/**
+ * Re-run migrations [fromVersion, CURRENT_SCHEMA_VERSION) against tables that are
+ * *already* at the current schema. Used after a backup restore: the restored rows
+ * were written under an older schema, so the data-transforming UPDATEs (v4 rating
+ * remap, v6/v7 Steam watermark seeds, v9 per-appid playtime seed, …) never ran on
+ * them. Replaying from the export's own version applies exactly the transforms it
+ * missed and nothing else.
+ *
+ * The schema statements in those migrations are harmless on the second pass: they
+ * are either idempotent (CREATE TABLE/INDEX … IF NOT EXISTS) or, for ALTER TABLE
+ * ADD COLUMN, fail with "duplicate column name" — the only error swallowed here.
+ *
+ * Does not touch `schema_version`: the database itself is already current, only the
+ * data it now holds lagged. Callers wrap this in their own `withTx`.
+ */
+export function replayMigrations(fromVersion: number): void {
+  for (let v = Math.max(0, fromVersion); v < MIGRATIONS.length; v++) {
+    for (const stmt of MIGRATIONS[v]) {
+      try {
+        db.execSync(stmt);
+      } catch (e) {
+        if (!/duplicate column name/i.test(String(e))) throw e;
+      }
+    }
+  }
+}
+
 // ---- settings helpers ----
 export function getSetting(key: string, fallback: string): string {
   const row = db.getFirstSync<{ value: string }>(

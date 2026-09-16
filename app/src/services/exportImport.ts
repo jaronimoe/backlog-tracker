@@ -1,7 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
-import { db, withTx } from "../db/database";
+import { CURRENT_SCHEMA_VERSION, db, replayMigrations, withTx } from "../db/database";
 import { encryptExport, decryptExport, isEncryptedEnvelope } from "./crypto";
 
 const TABLES = [
@@ -28,7 +28,27 @@ export function exportJson(): string {
   return JSON.stringify(data, null, 2);
 }
 
+/**
+ * Delete export files left in the cache directory by earlier shares. Best effort:
+ * a failed cleanup must never block the export itself. Only files this module
+ * writes are matched, so a picked import copy (DocumentPicker's own cache copy)
+ * is never touched.
+ */
+async function clearCachedExports() {
+  try {
+    const dir = FileSystem.cacheDirectory;
+    if (!dir) return;
+    for (const name of await FileSystem.readDirectoryAsync(dir)) {
+      if (!/^backlog-(export|encrypted)-\d+\.json$/.test(name)) continue;
+      await FileSystem.deleteAsync(dir + name, { idempotent: true });
+    }
+  } catch {
+    // ignore — stale cache files are not worth failing an export over
+  }
+}
+
 export async function shareExport(passphrase?: string) {
+  await clearCachedExports();
   const json = exportJson();
   const content = passphrase
     ? await encryptExport(json, passphrase)
@@ -64,6 +84,13 @@ export async function pickExportFile(): Promise<{
 export function importFromJson(raw: string): number {
   const data = JSON.parse(raw);
   if (data.app !== "backlog-tracker") throw new Error("Not a backlog-tracker export");
+  // A newer export can carry columns this build's tables don't have; inserting it
+  // would fail mid-restore with a raw SQLite "no such column" error after the wipe.
+  if ((data.schema_version ?? 0) > CURRENT_SCHEMA_VERSION) {
+    throw new Error(
+      "This backup was made by a newer version of the app — update the app first."
+    );
+  }
   return restoreData(data);
 }
 
@@ -95,25 +122,18 @@ function restoreData(data: Record<string, any>): number {
         );
       }
     }
-    // Back-compat: pre-v6 exports lack the Steam watermark. Seed it from the
-    // import lump so a first re-sync counts only genuinely new playtime instead
-    // of dumping the whole total onto one day. Games with tracked time but no
-    // lump (merge policy skipped their playtime) get the -1 "unknown baseline"
-    // sentinel — mirrors migrations v6+v7. Post-v6 exports carry the real
-    // watermarks (including legitimate zeros), so only patch older exports.
-    if ((data.schema_version ?? 0) < 6) {
-      db.runSync(
-        `UPDATE games SET steam_synced_minutes = imported_minutes
-           WHERE steam_synced_minutes = 0 AND imported_minutes > 0
-             AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')`
-      );
-      db.runSync(
-        `UPDATE games SET steam_synced_minutes = -1
-           WHERE steam_synced_minutes = 0 AND imported_minutes = 0
-             AND id IN (SELECT game_id FROM game_external_ids WHERE source = 'steam')
-             AND id IN (SELECT game_id FROM sessions GROUP BY game_id HAVING SUM(minutes) > 0)`
-      );
-    }
+    // The rows just inserted were written under `data.schema_version`: the tables
+    // are current (missing columns took their defaults), but every migration the
+    // export predates transformed data that is no longer here. Replay those
+    // migrations over the restored rows so they end up in the same shape a
+    // live database of that age would have after upgrading.
+    //
+    // The v4 rating remap (1–10 → 1–5 stars) is safe precisely because it is
+    // keyed on the export's version: it runs only for exports older than v4,
+    // which are exactly the ones whose ratings are still on the 1–10 scale.
+    // Likewise the v6/v7 Steam watermark seeds (which this replaces) and the v9
+    // per-appid playtime seed only touch exports that predate them.
+    replayMigrations(data.schema_version ?? 0);
   });
   return (data.games ?? []).length;
 }

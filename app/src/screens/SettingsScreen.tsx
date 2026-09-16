@@ -227,8 +227,9 @@ export default function SettingsScreen() {
       <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
         Export your full library as JSON (share to iCloud Drive / Google Drive),
         import it on another device. Import replaces all local data.{"\n\n"}
-        🔒 Encrypted export protects your API keys with a passphrase
-        (AES-256-GCM). Plain export works too — import auto-detects both.
+        🔒 Plain export includes your API keys and tokens in cleartext (you will
+        be warned); encrypted export protects them with a passphrase
+        (AES-256-GCM). Import auto-detects both.
       </Text>
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
         <Btn
@@ -253,7 +254,31 @@ export default function SettingsScreen() {
         <Btn
           label="Export plain"
           kind="secondary"
-          onPress={() => shareExport().catch((e) => Alert.alert("Export failed", String(e)))}
+          onPress={() => {
+            const runExport = () =>
+              shareExport().catch((e) => Alert.alert("Export failed", String(e)));
+            // Read the stored values, not the input state: the export dumps the
+            // settings table, so unsaved edits are irrelevant to what lands in
+            // the file. Plain exports keep the secrets by design — the user is
+            // warned and decides.
+            const hasSecrets = [
+              SETTINGS.steamApiKey,
+              SETTINGS.igdbClientSecret,
+              SETTINGS.llmToken,
+            ].some((k) => getSetting(k, "").trim() !== "");
+            if (!hasSecrets) {
+              runExport();
+              return;
+            }
+            Alert.alert(
+              "Plain export includes your API keys",
+              "The file will contain your Steam API key, IGDB client secret and AI token in cleartext. Anyone who gets the file can use them. Choose Export encrypted to protect them.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Export anyway", style: "destructive", onPress: runExport },
+              ]
+            );
+          }}
         />
         <Btn
           label="Import"
