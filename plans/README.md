@@ -75,3 +75,37 @@ You are implementing plans/NN-<name>.md in the backlog-tracker repository.
 - Consider a zero-dependency test harness for the pure-logic modules (`logic/*`, `parseCsv`): Node
   22.23 on this machine supports `node --experimental-strip-types --test`, but extension-less relative
   imports in `logic/` would need checking first. Out of scope for these plans.
+
+## Progress (as of 2026-09-16, session 1)
+
+| Plan | Status | On `main` |
+|------|--------|-------------|
+| 10 | merged | `fbf1aa3` |
+| 08 | merged | `5bb5108` |
+| 11 | merged | `0c01482` + fix-up `adf5bf0` |
+| 09 | merged | `b42e654` |
+| 01 | merged | `6cb4d98` (README merge-policy bullet hand-merged with 11) |
+| 03 | merged | `8d49840` |
+| 02 | not started | next: wave 2, second half |
+| 04, 05, 06, 07, 12 | not started | wave 3 |
+
+Every merge was type-checked on `main`. Nothing is pushed. The merged branches have been
+deleted and their worktrees removed; a resuming session creates a fresh worktree from `main`
+per remaining plan (`git worktree add <dir> -b fix/NN-<slug> main`, then symlink
+`app/node_modules` from the main checkout and add `app/node_modules` to `.git/info/exclude`,
+which is already done).
+
+Carried-over notes from the implementing agents (not fixed, not in any plan):
+
+- Root `spec.md` still documents the pre-v9 Steam model (watermark, delta attribution, dump
+  cleanup dialog); retire those paragraphs with plan 12.
+- Root `README.md` "Game state derivation" still says `totalMinutes = SUM(sessions) + imported`;
+  plan 06 owns stats definitions.
+- `SessionLogModal` and `ImportScreen` read theme colours at render but do not subscribe via
+  `useTheme()`, so a theme switched while one of them is on screen repaints only on the next
+  parent render.
+- Walkthrough reader: "Show 40 earlier" prepends rows inside the detail screen's `ScrollView`,
+  so the view jumps; `maintainVisibleContentPosition` on that ScrollView would fix it.
+- Calendar screen runs its month queries twice on first mount (mount + first focus); deliberate.
+- `exportImport.ts` still seeds the dead `games.steam_synced_minutes` for pre-v6 exports;
+  plan 04's migration replay supersedes it.
