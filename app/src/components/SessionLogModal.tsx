@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { C, themedStyles } from "../theme";
 import { Btn, Field, Input, ProgressBar, s } from "./ui";
 import { promptText } from "./PromptHost";
@@ -14,7 +14,6 @@ import {
 } from "../db/repo";
 import { intSetting, SETTINGS } from "../db/database";
 import { fmtMinutes, playDay, splitTag } from "../logic/derive";
-import { STEAM_MARKER_NOTE } from "../services/steam";
 
 export function SessionLogModal({
   gameId,
@@ -57,47 +56,16 @@ export function SessionLogModal({
 
   if (gameId == null) return null;
 
+  // Editing a session never touches the lifetime total any more: Steam's
+  // playtime is its own source (max(Steam, base + sessions)), so shrinking a
+  // day only changes what the user logged for that day.
   const save = () => {
-    const finish = () => {
-      logSession(gameId, day, minutes, note.trim() || null);
-      const completed = maybeMarkCompleted(gameId);
-      // Close this modal first — the completion prompt is itself a Modal, and
-      // iOS can't present one from inside another.
-      onClose(true);
-      if (completed) void promptCompletion(gameId);
-    };
-    // Shrinking a Steam-attributed session (e.g. a multi-week playtime delta
-    // dumped onto one day): offer to keep the removed time as undated base
-    // playtime so the lifetime total stays accurate.
-    const existing = sessionFor(gameId, day);
-    if (
-      existing &&
-      existing.note?.includes(STEAM_MARKER_NOTE) &&
-      minutes < existing.minutes
-    ) {
-      const diff = existing.minutes - minutes;
-      Alert.alert(
-        "Steam-synced session",
-        `You're removing ${fmtMinutes(diff)} that Steam sync attributed to this day. Keep it as undated base playtime (total stays accurate), or discard it?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Discard time", style: "destructive", onPress: finish },
-          {
-            text: "Keep time",
-            isPreferred: true,
-            onPress: () => {
-              const g = getGame(gameId);
-              updateGame(gameId, {
-                imported_minutes: (g?.imported_minutes ?? 0) + diff,
-              });
-              finish();
-            },
-          },
-        ]
-      );
-      return;
-    }
-    finish();
+    logSession(gameId, day, minutes, note.trim() || null);
+    const completed = maybeMarkCompleted(gameId);
+    // Close this modal first — the completion prompt is itself a Modal, and
+    // iOS can't present one from inside another.
+    onClose(true);
+    if (completed) void promptCompletion(gameId);
   };
 
   const showBlocker = blockerHits.length > 0 && !blockerAccepted;

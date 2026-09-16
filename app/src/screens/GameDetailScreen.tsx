@@ -51,7 +51,6 @@ import { fmtMinutes, isoDate, playDay } from "../logic/derive";
 import { DayEvent, eventsByDay } from "../services/deviceCalendar";
 import { canRecap, getRecap, llmConfigured } from "../services/llm";
 import {
-  STEAM_MARKER_NOTE,
   steamAppidFor,
   steamConfigured,
   syncSteamGame,
@@ -284,6 +283,17 @@ export default function GameDetailScreen({ route, navigation }: any) {
           <Text style={{ color: C.textSecondary, fontSize: 12 }}>
             Playtime: {fmtMinutes(game.totalMinutes)} • {game.sessionCount} sessions
           </Text>
+          {game.steamMinutes != null && (
+            // The total is max(Steam, own records) — show both sides so the
+            // number is explainable instead of mysterious.
+            <Text style={{ color: C.textMuted, fontSize: 11 }}>
+              Steam {fmtMinutes(game.steamMinutes)} · logged{" "}
+              {fmtMinutes(game.loggedMinutes)}
+              {game.imported_minutes > 0
+                ? ` · base ${fmtMinutes(game.imported_minutes)}`
+                : ""}
+            </Text>
+          )}
           <View style={{ marginTop: 8 }}>
             <Stars
               rating={game.rating}
@@ -568,12 +578,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
       )}
 
       {tab === "sessions" && (
-        <SessionsTab
-          gameId={id}
-          sessions={sessions}
-          importedMinutes={game.imported_minutes}
-          onChanged={reload}
-        />
+        <SessionsTab gameId={id} sessions={sessions} onChanged={reload} />
       )}
 
       {tab === "notes" && (
@@ -675,12 +680,10 @@ export default function GameDetailScreen({ route, navigation }: any) {
 function SessionsTab({
   gameId,
   sessions,
-  importedMinutes,
   onChanged,
 }: {
   gameId: number;
   sessions: Session[]; // sorted DESC by date
-  importedMinutes: number;
   onChanged: () => void;
 }) {
   const latest = sessions[0]?.date ?? playDay();
@@ -731,42 +734,20 @@ function SessionsTab({
     year: "numeric",
   });
 
+  // Deleting a session never shrinks the lifetime total any more: Steam's
+  // playtime lives on the appid link, not in sessions.
   const confirmDelete = (sess: Session) => {
-    const finish = () => {
-      deleteSession(sess.id);
-      onChanged();
-    };
-    // Steam-attributed playtime: deleting the session would silently shrink
-    // the lifetime total, so offer to keep the time as undated base playtime.
-    if (sess.note?.includes(STEAM_MARKER_NOTE) && sess.minutes > 0) {
-      Alert.alert(
-        "Delete Steam-synced session?",
-        `Steam sync attributed ${fmtMinutes(sess.minutes)} to ${sess.date}. Keep the time as undated base playtime (total stays accurate), or discard it?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Discard time", style: "destructive", onPress: finish },
-          {
-            text: "Keep time",
-            isPreferred: true,
-            onPress: () => {
-              updateGame(gameId, {
-                imported_minutes: importedMinutes + sess.minutes,
-              });
-              finish();
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        "Delete session?",
-        `${sess.date} — ${fmtMinutes(sess.minutes)}`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive", onPress: finish },
-        ]
-      );
-    }
+    Alert.alert("Delete session?", `${sess.date} — ${fmtMinutes(sess.minutes)}`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          deleteSession(sess.id);
+          onChanged();
+        },
+      },
+    ]);
   };
 
   const navBtnStyle = (disabled: boolean) => ({
@@ -1151,7 +1132,7 @@ function EditGameModal({
                 maximumDate={new Date()}
               />
             </Field>
-            <Field label="Base playtime (outside logged sessions)">
+            <Field label="Base playtime (undated own time, outside logged sessions — Steam time is tracked separately)">
               <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                 <Input value={impHours} onChangeText={setImpHours} keyboardType="numeric" style={{ width: 70, textAlign: "center" }} />
                 <Text style={{ color: C.textMuted, fontSize: 12 }}>hours</Text>
