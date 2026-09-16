@@ -1,10 +1,9 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { C, themedStyles } from "../theme";
 import {
   sessionsInRange,
-  sessionsForDay,
   startedCompletedInRange,
   RangeGameSummary,
 } from "../db/repo";
@@ -13,6 +12,21 @@ import { MonthGrid } from "../components/MonthGrid";
 import { DayEvent, eventsByDay } from "../services/deviceCalendar";
 
 type Scope = "day" | "month" | "year";
+type SessionRow = ReturnType<typeof sessionsInRange>[number];
+type GameTotal = { id: number; title: string; minutes: number };
+
+const EMPTY_SUMMARY: RangeGameSummary = { started: [], completed: [] };
+
+/** Sum a period's sessions into one row per game, biggest first. */
+function totalsByGame(rows: SessionRow[]): GameTotal[] {
+  const byGame = new Map<number, GameTotal>();
+  for (const s of rows) {
+    const e = byGame.get(s.game_id);
+    if (e) e.minutes += s.minutes;
+    else byGame.set(s.game_id, { id: s.game_id, title: s.title, minutes: s.minutes });
+  }
+  return [...byGame.values()].sort((a, b) => b.minutes - a.minutes);
+}
 
 export default function CalendarScreen() {
   const navigation = useNavigation<any>();
@@ -20,89 +34,110 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(new Date().getMonth()); // 0-based
   const [selected, setSelected] = useState<string>(playDay());
   const [scope, setScope] = useState<Scope>("month");
-  const [dayTotals, setDayTotals] = useState<Record<string, number>>({});
-  const [daySessions, setDaySessions] = useState<
-    ReturnType<typeof sessionsForDay>
-  >([]);
-  const [periodTotal, setPeriodTotal] = useState(0);
-  const [gameTotals, setGameTotals] = useState<
-    { id: number; title: string; minutes: number }[]
-  >([]);
-  const [summary, setSummary] = useState<RangeGameSummary>({
-    started: [],
-    completed: [],
-  });
+
+  // Sessions change on other screens, so every focus bumps this counter and
+  // the query effects below re-run. In-screen changes are handled by their own
+  // dependencies — tapping a day must not re-query the month.
+  const [tick, setTick] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setTick((t) => t + 1);
+    }, [])
+  );
+
+  const [monthRows, setMonthRows] = useState<SessionRow[]>([]);
+  const [monthSummary, setMonthSummary] =
+    useState<RangeGameSummary>(EMPTY_SUMMARY);
+  const [yearRows, setYearRows] = useState<SessionRow[]>([]);
+  const [yearSummary, setYearSummary] =
+    useState<RangeGameSummary>(EMPTY_SUMMARY);
+  const [daySummary, setDaySummary] =
+    useState<RangeGameSummary>(EMPTY_SUMMARY);
   const [dayEvents, setDayEvents] = useState<Record<string, DayEvent[]>>({});
 
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
+  const monthFrom = isoDate(first);
+  const monthTo = isoDate(last);
+  const yearFrom = `${year}-01-01`;
+  const yearTo = `${year}-12-31`;
 
-  // Range for the summary stats, driven by the active scope.
-  const range = (): { from: string; to: string; label: string } => {
-    if (scope === "day")
-      return { from: selected, to: selected, label: selected };
-    if (scope === "year")
-      return {
-        from: `${year}-01-01`,
-        to: `${year}-12-31`,
-        label: String(year),
-      };
-    return {
-      from: isoDate(first),
-      to: isoDate(last),
-      label: first.toLocaleDateString(undefined, {
-        month: "long",
-        year: "numeric",
-      }),
-    };
-  };
-
-  const reload = useCallback(() => {
-    const rows = sessionsInRange(isoDate(first), isoDate(last));
-    const totals: Record<string, number> = {};
-    for (const r of rows) totals[r.date] = (totals[r.date] ?? 0) + r.minutes;
-    setDayTotals(totals);
-    const r = range();
-    if (scope === "day") {
-      const s = sessionsForDay(selected);
-      setDaySessions(s);
-      setGameTotals([]);
-      setPeriodTotal(s.reduce((a, x) => a + x.minutes, 0));
-    } else {
-      const periodRows =
-        scope === "month" ? rows : sessionsInRange(r.from, r.to);
-      const byGame = new Map<
-        number,
-        { id: number; title: string; minutes: number }
-      >();
-      for (const s of periodRows) {
-        const e = byGame.get(s.game_id);
-        if (e) e.minutes += s.minutes;
-        else
-          byGame.set(s.game_id, {
-            id: s.game_id,
-            title: s.title,
-            minutes: s.minutes,
-          });
-      }
-      setDaySessions([]);
-      setGameTotals(
-        [...byGame.values()].sort((a, b) => b.minutes - a.minutes)
-      );
-      setPeriodTotal(periodRows.reduce((a, x) => a + x.minutes, 0));
-    }
-    setSummary(startedCompletedInRange(r.from, r.to));
+  // 1. Month data — feeds the grid always, and the lists while scope is month.
+  //    Re-runs on month/year navigation and on focus only.
+  useEffect(() => {
+    setMonthRows(sessionsInRange(monthFrom, monthTo));
+    setMonthSummary(startedCompletedInRange(monthFrom, monthTo));
     // Device calendar overlay — async, fails soft to {} when not linked.
     let cancelled = false;
-    eventsByDay(isoDate(first), isoDate(last)).then((ev) => {
+    eventsByDay(monthFrom, monthTo).then((ev) => {
       if (!cancelled) setDayEvents(ev);
     });
     return () => {
       cancelled = true;
     };
-  }, [year, month, selected, scope]);
+  }, [monthFrom, monthTo, tick]);
 
-  useFocusEffect(reload);
+  // 2. Year data — only fetched while the year scope is showing.
+  useEffect(() => {
+    if (scope !== "year") return;
+    setYearRows(sessionsInRange(yearFrom, yearTo));
+    setYearSummary(startedCompletedInRange(yearFrom, yearTo));
+  }, [yearFrom, yearTo, scope, tick]);
+
+  // 3. Day data — the only query a day tap costs. The day's sessions
+  //    themselves are filtered out of monthRows below.
+  useEffect(() => {
+    if (scope !== "day") return;
+    setDaySummary(startedCompletedInRange(selected, selected));
+  }, [selected, scope, tick]);
+
+  // ---- derived from the state above; no queries ----
+
+  const dayTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const r of monthRows) totals[r.date] = (totals[r.date] ?? 0) + r.minutes;
+    return totals;
+  }, [monthRows]);
+
+  // While scope is "day", `selected` is always inside the displayed month:
+  // the arrows leave day scope and Today moves the month with the selection.
+  const daySessions = useMemo(
+    () =>
+      monthRows
+        .filter((r) => r.date === selected)
+        .sort((a, b) => b.minutes - a.minutes),
+    [monthRows, selected]
+  );
+
+  const periodRows = scope === "year" ? yearRows : monthRows;
+
+  const gameTotals = useMemo<GameTotal[]>(
+    () => (scope === "day" ? [] : totalsByGame(periodRows)),
+    [periodRows, scope]
+  );
+
+  const periodTotal = useMemo(
+    () =>
+      (scope === "day" ? daySessions : periodRows).reduce(
+        (a, x) => a + x.minutes,
+        0
+      ),
+    [scope, daySessions, periodRows]
+  );
+
+  const summary =
+    scope === "day" ? daySummary : scope === "year" ? yearSummary : monthSummary;
+
+  // Heading for the active scope.
+  const rangeLabel =
+    scope === "day"
+      ? selected
+      : scope === "year"
+      ? String(year)
+      : first.toLocaleDateString(undefined, {
+          month: "long",
+          year: "numeric",
+        });
 
   const nav = (delta: number) => {
     // Arrows only navigate months/years; from day mode they jump to month mode.
@@ -175,7 +210,7 @@ export default function CalendarScreen() {
 
       <View style={cal.detail}>
         <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: "600", marginBottom: 10 }}>
-          {range().label}
+          {rangeLabel}
           {periodTotal > 0 ? ` — ${fmtMinutes(periodTotal)} total` : ""}
         </Text>
         {scope === "day" && (dayEvents[selected]?.length ?? 0) > 0 && (
@@ -239,7 +274,7 @@ export default function CalendarScreen() {
       </View>
 
       <View style={cal.detail}>
-        <Text style={cal.summaryTitle}>Summary — {range().label}</Text>
+        <Text style={cal.summaryTitle}>Summary — {rangeLabel}</Text>
         <View style={cal.summaryRow}>
           <Text style={cal.statNum}>{summary.started.length}</Text>
           <Text style={cal.statLabel}>started</Text>
