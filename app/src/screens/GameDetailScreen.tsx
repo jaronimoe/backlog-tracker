@@ -136,7 +136,9 @@ export default function GameDetailScreen({ route, navigation }: any) {
   if (!game) return null;
 
   const checkCompletion = () => {
-    if (maybeMarkCompleted(id)) promptCompletion(id);
+    // The prompt resolves later; reload() now so the milestone tick shows
+    // immediately, and again from onSaved once a final note is written.
+    if (maybeMarkCompleted(id)) void promptCompletion(id, reload);
     reload();
   };
 

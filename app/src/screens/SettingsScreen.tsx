@@ -15,6 +15,7 @@ import {
   useTheme,
 } from "../theme";
 import { Btn, Field, Input } from "../components/ui";
+import { promptText } from "../components/PromptHost";
 import { getSetting, setSetting, SETTINGS, LLM_DEFAULTS } from "../db/database";
 import { saveIgdbCreds, verifyIgdbCreds } from "../services/igdb";
 import { startIgdbMetadataSync } from "../services/igdbSync";
@@ -233,28 +234,21 @@ export default function SettingsScreen() {
         <Btn
           label="🔒 Export encrypted"
           kind="secondary"
-          onPress={() =>
-            Alert.prompt(
-              "Set export passphrase",
-              "Choose a passphrase to encrypt the backup. You'll need it to import on another device.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Export",
-                  onPress: (pw?: string) => {
-                    if (!pw?.trim()) {
-                      Alert.alert("No passphrase", "Passphrase is required for encrypted export.");
-                      return;
-                    }
-                    shareExport(pw.trim()).catch((e) =>
-                      Alert.alert("Export failed", String(e))
-                    );
-                  },
-                },
-              ],
-              "secure-text"
-            )
-          }
+          onPress={async () => {
+            const pw = await promptText({
+              title: "Set export passphrase",
+              message:
+                "Choose a passphrase to encrypt the backup. You'll need it to import on another device.",
+              secure: true,
+              confirmLabel: "Export",
+            });
+            if (pw == null) return;
+            if (!pw) {
+              Alert.alert("No passphrase", "Passphrase is required for encrypted export.");
+              return;
+            }
+            shareExport(pw).catch((e) => Alert.alert("Export failed", String(e)));
+          }}
         />
         <Btn
           label="Export plain"
@@ -270,27 +264,20 @@ export default function SettingsScreen() {
               if (!picked) return;
 
               if (picked.encrypted) {
-                Alert.prompt(
-                  "Encrypted backup",
-                  "Enter the passphrase used when exporting.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Decrypt & import",
-                      onPress: async (pw?: string) => {
-                        if (!pw?.trim()) return;
-                        try {
-                          const n = await importEncrypted(picked.raw, pw.trim());
-                          reloadFromDb();
-                          Alert.alert("Imported", `${n} games restored.`);
-                        } catch (e: any) {
-                          Alert.alert("Import failed", String(e?.message ?? e));
-                        }
-                      },
-                    },
-                  ],
-                  "secure-text"
-                );
+                const pw = await promptText({
+                  title: "Encrypted backup",
+                  message: "Enter the passphrase used when exporting.",
+                  secure: true,
+                  confirmLabel: "Decrypt & import",
+                });
+                if (!pw) return;
+                try {
+                  const n = await importEncrypted(picked.raw, pw);
+                  reloadFromDb();
+                  Alert.alert("Imported", `${n} games restored.`);
+                } catch (e: any) {
+                  Alert.alert("Import failed", String(e?.message ?? e));
+                }
               } else {
                 const n = importFromJson(picked.raw);
                 reloadFromDb();

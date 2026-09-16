@@ -16,6 +16,7 @@ import ImportScreen from "./src/screens/ImportScreen";
 import { useImportState } from "./src/services/importQueue";
 import GameDetailScreen from "./src/screens/GameDetailScreen";
 import AddGameScreen from "./src/screens/AddGameScreen";
+import { PromptHost } from "./src/components/PromptHost";
 
 migrate();
 initTheme();
@@ -83,6 +84,7 @@ export default function App() {
         <Stack.Screen name="GameDetail" component={GameDetailScreen} options={{ title: "" }} />
         <Stack.Screen name="AddGame" component={AddGameScreen} options={{ title: "Add Game", presentation: "modal" }} />
       </Stack.Navigator>
+      <PromptHost />
     </NavigationContainer>
     </SafeAreaProvider>
   );

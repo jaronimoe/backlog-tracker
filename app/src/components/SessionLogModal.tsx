@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { C, themedStyles } from "../theme";
 import { Btn, Field, Input, ProgressBar, s } from "./ui";
+import { promptText } from "./PromptHost";
 import {
   genreBlockCheck,
   getGame,
@@ -62,8 +63,11 @@ export function SessionLogModal({
   const save = () => {
     const finish = () => {
       logSession(gameId, day, minutes, note.trim() || null);
-      if (maybeMarkCompleted(gameId)) promptCompletion(gameId);
+      const completed = maybeMarkCompleted(gameId);
+      // Close this modal first — the completion prompt is itself a Modal, and
+      // iOS can't present one from inside another.
       onClose(true);
+      if (completed) void promptCompletion(gameId);
     };
     // Shrinking a Steam-attributed session (e.g. a multi-week playtime delta
     // dumped onto one day): offer to keep the removed time as undated base
@@ -196,15 +200,25 @@ export function SessionLogModal({
   );
 }
 
-export function promptCompletion(gameId: number) {
-  Alert.prompt?.(
-    "🎉 Completed!",
-    "How'd you like it? Any final thoughts?",
-    (text) => {
-      if (text) updateGame(gameId, { final_note: text });
-    }
-  ) ??
-    Alert.alert("🎉 Completed!", "Game marked as completed.", [{ text: "OK" }]);
+/**
+ * Ask for a final note after a game is marked completed. Resolves once the
+ * prompt is dismissed; onSaved fires only when a note was actually written.
+ */
+export async function promptCompletion(
+  gameId: number,
+  onSaved?: () => void
+): Promise<void> {
+  const text = await promptText({
+    title: "🎉 Completed!",
+    message: "How'd you like it? Any final thoughts?",
+    placeholder: "Final note (optional)",
+    multiline: true,
+    confirmLabel: "Save",
+  });
+  if (text) {
+    updateGame(gameId, { final_note: text });
+    onSaved?.();
+  }
 }
 
 export const m = themedStyles(() => ({
