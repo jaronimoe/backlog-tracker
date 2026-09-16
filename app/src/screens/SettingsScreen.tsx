@@ -37,6 +37,14 @@ import {
   setLinkedCalendarIds,
 } from "../services/deviceCalendar";
 
+/** A whole number inside [min, max], or null when the text is neither. */
+function parseIntField(raw: string, min: number, max: number): number | null {
+  const t = raw.trim();
+  if (!/^-?\d+$/.test(t)) return null;
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const [recentDays, setRecentDays] = useState(getSetting(SETTINGS.recentDays, "14"));
@@ -105,11 +113,49 @@ export default function SettingsScreen() {
   };
 
   const save = async () => {
-    setSetting(SETTINGS.recentDays, recentDays || "14");
-    setSetting(SETTINGS.currentWindow, currentWindow || "year");
-    setSetting(SETTINGS.streakGrace, grace || "1");
-    setSetting(SETTINGS.playedThreshold, playedMin || "29");
-    setSetting(SETTINGS.genreBlockThreshold, threshold || "1");
+    // Validate every numeric field before writing anything: these values drive
+    // grouping app-wide, and one stray character used to be stored as-is and
+    // read back as NaN (every game silently dropping out of Current).
+    const numeric: {
+      label: string;
+      raw: string;
+      min: number;
+      max: number;
+      key: string;
+    }[] = [
+      { label: "Recently Played window (days)", raw: recentDays || "14", min: 1, max: 365, key: SETTINGS.recentDays },
+      { label: "Counts as played above (minutes)", raw: playedMin || "29", min: 0, max: 100000, key: SETTINGS.playedThreshold },
+      { label: "Streak grace period (days)", raw: grace || "1", min: 0, max: 3, key: SETTINGS.streakGrace },
+      { label: "Genre Blocker threshold", raw: threshold || "1", min: 1, max: 99, key: SETTINGS.genreBlockThreshold },
+    ];
+    const toWrite: [string, string][] = [];
+    for (const f of numeric) {
+      const n = parseIntField(f.raw, f.min, f.max);
+      if (n == null) {
+        Alert.alert(
+          "Invalid value",
+          `${f.label}: enter a whole number between ${f.min} and ${f.max}.`
+        );
+        return;
+      }
+      toWrite.push([f.key, String(n)]);
+    }
+    const cw = (currentWindow || "year").trim().toLowerCase();
+    if (cw === "year") {
+      toWrite.push([SETTINGS.currentWindow, "year"]);
+    } else {
+      const days = parseIntField(cw, 1, 3650);
+      if (days == null) {
+        Alert.alert(
+          "Invalid value",
+          'Current window: enter "year" or a whole number between 1 and 3650.'
+        );
+        return;
+      }
+      toWrite.push([SETTINGS.currentWindow, String(days)]);
+    }
+    // Only normalised values reach the DB, and only once everything parsed.
+    for (const [key, value] of toWrite) setSetting(key, value);
     saveIgdbCreds(igdbId, igdbSecret);
     if (igdbId.trim() && igdbSecret.trim()) {
       setVerifying(true);

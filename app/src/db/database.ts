@@ -247,6 +247,26 @@ export function setSetting(key: string, value: string) {
   );
 }
 
+/**
+ * Numeric setting with a guard rail: `fallback` whenever the stored value is
+ * missing, not a whole number, or outside [min, max]. Settings rows can hold
+ * anything (a hand-edited restore, an older app version), and a bare parseInt
+ * turning one into NaN silently breaks grouping app-wide — every numeric read
+ * goes through here instead.
+ */
+export function intSetting(
+  key: string,
+  fallback: number,
+  min = -Infinity,
+  max = Infinity
+): number {
+  const raw = getSetting(key, "").trim();
+  if (!/^-?\d+$/.test(raw)) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < min || n > max) return fallback;
+  return n;
+}
+
 export const SETTINGS = {
   recentDays: "recent_days", // Recently Played window (default 14)
   currentWindow: "current_window", // 'year' | number of days (default 'year')

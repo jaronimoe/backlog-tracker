@@ -1,4 +1,4 @@
-import { db, getSetting, SETTINGS, withTx } from "./database";
+import { db, intSetting, SETTINGS, withTx } from "./database";
 import {
   Game,
   GameWithMeta,
@@ -18,17 +18,19 @@ import { normalizeTitle } from "../logic/normalize";
 import { findFuzzyMatch } from "../logic/fuzzy";
 
 export function windowConfig(): WindowConfig {
-  const recentDays = parseInt(getSetting(SETTINGS.recentDays, "14"), 10);
-  const cw = getSetting(SETTINGS.currentWindow, "year");
+  // The Current window is "year" unless the stored value is a usable day
+  // count; anything else (a typo, a hand-edited restore) falls back to "year"
+  // rather than poisoning every comparison with NaN.
+  const cwDays = intSetting(SETTINGS.currentWindow, 0, 1, 3650);
   return {
-    recentDays,
-    currentWindow: cw === "year" ? "year" : parseInt(cw, 10),
-    playedThreshold: parseInt(getSetting(SETTINGS.playedThreshold, "29"), 10),
+    recentDays: intSetting(SETTINGS.recentDays, 14, 1, 365),
+    currentWindow: cwDays > 0 ? cwDays : "year",
+    playedThreshold: intSetting(SETTINGS.playedThreshold, 29, 0, 100000),
   };
 }
 
 export function streakGrace(): number {
-  return parseInt(getSetting(SETTINGS.streakGrace, "1"), 10);
+  return intSetting(SETTINGS.streakGrace, 1, 0, 3);
 }
 
 // ---------- games ----------

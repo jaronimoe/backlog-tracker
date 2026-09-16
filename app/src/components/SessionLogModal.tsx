@@ -12,7 +12,7 @@ import {
   sessionFor,
   updateGame,
 } from "../db/repo";
-import { getSetting, SETTINGS } from "../db/database";
+import { intSetting, SETTINGS } from "../db/database";
 import { fmtMinutes, playDay, splitTag } from "../logic/derive";
 import { STEAM_MARKER_NOTE } from "../services/steam";
 
@@ -47,10 +47,7 @@ export function SessionLogModal({
     // Genre blocker: first session of a never-played game. Only when logging
     // for today — backfilling a forgotten day or fixing history shouldn't nag.
     if (isNeverPlayed(gameId) && !existing && day === playDay()) {
-      const threshold = parseInt(
-        getSetting(SETTINGS.genreBlockThreshold, "1"),
-        10
-      );
+      const threshold = intSetting(SETTINGS.genreBlockThreshold, 1, 1, 99);
       const hits = genreBlockCheck(gameId);
       setBlockerHits(hits.length >= threshold ? hits : []);
     } else {
