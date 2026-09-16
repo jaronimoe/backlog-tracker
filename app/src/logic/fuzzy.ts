@@ -103,6 +103,69 @@ export function isFuzzyMatch(a: string, b: string): boolean {
   return budget > 0 && boundedLevenshtein(a, b, budget) <= budget;
 }
 
+/** A byNorm entry with its tokenisation precomputed once. */
+interface CachedEntry {
+  norm: string;
+  id: number;
+  tokens: string[];
+  sig: string;
+}
+
+interface TokenCache {
+  /** How many byNorm entries (in insertion order) are already in `entries`. */
+  seen: number;
+  entries: CachedEntry[];
+}
+
+/**
+ * Per-Map tokenisation cache for findFuzzyMatch().
+ *
+ * Importers build one `byNorm` Map and call findFuzzyMatch() once per row, so
+ * without a cache every row re-splits and re-regexes the whole library
+ * (1 000 games × 1 000 rows ≈ a million passes on the JS thread). The cache is
+ * keyed by the Map itself and held weakly, so it dies with the import.
+ *
+ * INVARIANT: callers only ever *append* new keys to `byNorm` while an import
+ * runs (`csvImport`/`steam` call `set` only after a lookup missed, so the key
+ * is always new, and they never re-`set` an existing key to a different id).
+ * Map iteration is insertion-ordered, so `entries[i]` stays aligned with the
+ * i-th Map entry and growth only ever means appending at index ≥ `seen`.
+ * A shrunken Map means keys were deleted and the alignment is gone, so the
+ * cache is rebuilt from scratch. A same-size swap (delete + add, or re-`set`
+ * to a new id) would go unnoticed — no caller does that.
+ * `findSimilarGame` in db/repo.ts builds a fresh Map per call, so it neither
+ * benefits from nor regresses with the cache.
+ */
+const tokenCaches = new WeakMap<Map<string, number>, TokenCache>();
+
+function cachedEntries(byNorm: Map<string, number>): CachedEntry[] {
+  let cache = tokenCaches.get(byNorm);
+  if (!cache) {
+    cache = { seen: 0, entries: [] };
+    tokenCaches.set(byNorm, cache);
+  }
+  if (byNorm.size < cache.seen) {
+    // Entries were deleted — indices no longer line up, so start over.
+    cache.seen = 0;
+    cache.entries = [];
+  }
+  if (byNorm.size > cache.seen) {
+    let i = 0;
+    for (const [candNorm, id] of byNorm) {
+      if (i++ < cache.seen) continue; // already tokenised
+      const tokens = candNorm.split(" ");
+      cache.entries.push({
+        norm: candNorm,
+        id,
+        tokens,
+        sig: numberSignature(tokens),
+      });
+    }
+    cache.seen = byNorm.size;
+  }
+  return cache.entries;
+}
+
 /**
  * Find an existing game whose normalized title fuzzily matches `norm`.
  * Call only after the exact byNorm lookup missed. Subtitle-drop matches
@@ -115,23 +178,24 @@ export function findFuzzyMatch(
   if (!norm) return null;
   const tokens = norm.split(" ");
   const sig = numberSignature(tokens);
+  const entries = cachedEntries(byNorm);
   let best: FuzzyMatch | null = null;
   let bestDist = Number.MAX_SAFE_INTEGER;
 
-  for (const [candNorm, id] of byNorm) {
-    if (candNorm === norm || !candNorm) continue;
-    const candTokens = candNorm.split(" ");
-    if (numberSignature(candTokens) !== sig) continue;
+  for (let i = 0; i < entries.length; i++) {
+    const cand = entries[i];
+    if (cand.norm === norm || !cand.norm) continue;
+    if (cand.sig !== sig) continue;
 
-    if (isSubtitleDrop(tokens, candTokens) || isSubtitleDrop(candTokens, tokens))
-      return { id, norm: candNorm }; // strongest signal — take it immediately
+    if (isSubtitleDrop(tokens, cand.tokens) || isSubtitleDrop(cand.tokens, tokens))
+      return { id: cand.id, norm: cand.norm }; // strongest signal — take it immediately
 
-    const budget = typoBudget(Math.min(norm.length, candNorm.length));
+    const budget = typoBudget(Math.min(norm.length, cand.norm.length));
     if (budget === 0) continue;
-    const d = boundedLevenshtein(norm, candNorm, budget);
+    const d = boundedLevenshtein(norm, cand.norm, budget);
     if (d <= budget && d < bestDist) {
       bestDist = d;
-      best = { id, norm: candNorm };
+      best = { id: cand.id, norm: cand.norm };
     }
   }
   return best;

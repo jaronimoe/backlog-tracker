@@ -154,6 +154,10 @@ function importRow(
 
 /** Validate + queue a CSV import. Throws synchronously on bad input. */
 export function startCsvImport(text: string, fileName: string | null) {
+  // Excel/Numbers prefix a UTF-8 BOM, which lands in the first header cell as
+  // "﻿title". The header `.trim()` below happens to absorb it (U+FEFF is
+  // ECMAScript whitespace), but don't make the column lookup depend on that.
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const rows = parseCsv(text);
   if (rows.length < 2) throw new Error("CSV has no data rows");
   const header = rows[0].map((h) => h.trim().toLowerCase());
