@@ -1,11 +1,9 @@
 import { db, getSetting, SETTINGS } from "../db/database";
 import {
-  accumulateSession,
   addGame,
   addNote,
   addTag,
   ensureMarkerSession,
-  isNeverPlayed,
   windowConfig,
 } from "../db/repo";
 import { fmtMinutes, isoDate } from "../logic/derive";
@@ -16,23 +14,29 @@ import { RowResult, startImport } from "./importQueue";
 /**
  * Steam library import (IPlayerService/GetOwnedGames).
  *
+ * Playtime model: Steam's lifetime total per appid lives on the link row
+ * (`game_external_ids.playtime_minutes`) and is never merged into sessions or
+ * `imported_minutes`. A game's playtime is max(sum of its Steam totals,
+ * imported_minutes + logged sessions) — the two measure the same play, so the
+ * larger number is the truer one. Sync only refreshes the per-appid totals, the
+ * last-played date and the zero-minute calendar marker.
+ *
  * Merge policy (user decision):
  * - Games already linked by appid -> skipped (idempotent re-sync), unless
  *   `resyncPlaytime` is set, in which case their Steam playtime and
  *   last-played date are refreshed from the live library.
  * - Games matching an existing entry by normalized title (exact, or via the
  *   conservative fuzzy tier in logic/fuzzy.ts) -> MERGED into it, flagged
- *   with a `source:steam` tag + an audit note, playtime only filled
- *   if the existing entry has no tracked time (avoids double counting).
+ *   with a `source:steam` tag + an audit note; Steam's playtime lands on the
+ *   new link row, so nothing the user tracked is touched or double counted.
  * - Everything else -> added; never-played Steam games additionally get a
  *   `status:unplayed` tag so they don't drown the real backlog.
  */
 
 /**
- * Note stamped on sessions Steam sync creates (0-minute "last played"
- * markers and dated playtime-delta sessions). Session editing UIs use it to
- * recognise Steam-attributed time and offer to preserve it as undated
- * base playtime when the user corrects a mis-attributed dump.
+ * Note stamped on the 0-minute "last played" marker sessions Steam sync
+ * creates. Sync no longer writes minutes into sessions; older installs may
+ * still carry dated sessions with this note from the pre-v9 delta model.
  */
 export const STEAM_MARKER_NOTE = "Last played on Steam";
 
@@ -108,37 +112,25 @@ function importSteamRow(
 
   if (existingId != null) {
     // ---- merge into existing entry, flag it ----
+    // Steam's total goes on the link row, never into imported_minutes: the
+    // game's playtime is max(Steam, own records), so nothing double counts.
     db.runSync(
-      "INSERT OR IGNORE INTO game_external_ids (game_id, source, external_id) VALUES (?, 'steam', ?)",
-      [existingId, appid]
+      `INSERT OR IGNORE INTO game_external_ids (game_id, source, external_id, playtime_minutes)
+       VALUES (?, 'steam', ?, ?)`,
+      [existingId, appid, g.playtime_forever]
     );
     linked.set(appid, existingId);
     addTag(existingId, "source:steam");
     addTag(existingId, "platform:steam");
 
     const row = db.getFirstSync<{
-      imported_minutes: number;
       last_played_override: string | null;
       cover_url: string | null;
     }>(
-      "SELECT imported_minutes, last_played_override, cover_url FROM games WHERE id = ?",
+      "SELECT last_played_override, cover_url FROM games WHERE id = ?",
       [existingId]
     )!;
 
-    const details: string[] = [];
-    // fill playtime only if nothing tracked yet (no double counting)
-    if (g.playtime_forever > 0 && isNeverPlayed(existingId)) {
-      db.runSync("UPDATE games SET imported_minutes = ? WHERE id = ?", [
-        g.playtime_forever,
-        existingId,
-      ]);
-      details.push(`+${fmtMinutes(g.playtime_forever)}`);
-    }
-    // Watermark the Steam total so future re-syncs attribute only new playtime.
-    db.runSync("UPDATE games SET steam_synced_minutes = ? WHERE id = ?", [
-      g.playtime_forever,
-      existingId,
-    ]);
     if (lastPlayed && (!row.last_played_override || lastPlayed > row.last_played_override)) {
       db.runSync("UPDATE games SET last_played_override = ? WHERE id = ?", [
         lastPlayed,
@@ -161,7 +153,11 @@ function importSteamRow(
     );
     return {
       status: "merged",
-      detail: (fuzzyNorm ? "≈ " : "") + (details.join(" ") || "linked"),
+      detail:
+        (fuzzyNorm ? "≈ " : "") +
+        (g.playtime_forever > 0
+          ? `${fmtMinutes(g.playtime_forever)} on Steam`
+          : "linked"),
     };
   }
 
@@ -171,22 +167,20 @@ function importSteamRow(
   const tags = ["source:steam", "platform:steam"];
   if (unplayed) tags.push("status:unplayed");
 
+  // imported_minutes stays 0 — Steam's number lives on the link row.
   const id = addGame({
     title,
     cover_url: coverUrl(g.appid),
     platform_summary: "Steam",
-    imported_minutes: g.playtime_forever,
+    imported_minutes: 0,
     last_played_override: lastPlayed,
     tags,
   });
   db.runSync(
-    "INSERT INTO game_external_ids (game_id, source, external_id) VALUES (?, 'steam', ?)",
-    [id, appid]
+    `INSERT INTO game_external_ids (game_id, source, external_id, playtime_minutes)
+     VALUES (?, 'steam', ?, ?)`,
+    [id, appid, g.playtime_forever]
   );
-  db.runSync("UPDATE games SET steam_synced_minutes = ? WHERE id = ?", [
-    g.playtime_forever,
-    id,
-  ]);
   linked.set(appid, id);
   byNorm.set(norm, id);
   if (lastPlayed) ensureMarkerSession(id, lastPlayed, STEAM_MARKER_NOTE);
@@ -198,108 +192,90 @@ function importSteamRow(
 }
 
 /**
- * Refresh an already-linked Steam entry's playtime + last-played from the
- * live library. `imported_minutes` on a Steam-linked game holds the Steam
- * total, so overwriting it with the fresh total is correct (any manually
- * logged sessions live separately and are untouched).
+ * Refresh one already-linked appid from the live library: store Steam's fresh
+ * lifetime total on the link row, bump the last-played date and stamp the
+ * zero-minute calendar marker. No minutes are ever written to sessions — the
+ * game's playtime is max(Steam total, own records), so a Steam number that
+ * grows simply raises the total.
  */
-function resyncLinked(g: SteamGame, existingId: number): RowResult {
+function resyncLinked(g: SteamGame, gameId: number): RowResult {
+  const appid = String(g.appid);
   const lastPlayed = lastPlayedDate(g);
-  const row = db.getFirstSync<{
-    imported_minutes: number;
-    steam_synced_minutes: number;
-    last_played_override: string | null;
-  }>(
-    "SELECT imported_minutes, steam_synced_minutes, last_played_override FROM games WHERE id = ?",
-    [existingId]
-  )!;
-
-  // Watermark -1 = baseline unknown (game was merged into an entry with
-  // tracked time before v6, so its historical Steam total was deliberately
-  // never counted). Establish the baseline now without attributing anything —
-  // only playtime accrued *after* this sync will become dated sessions.
-  if (row.steam_synced_minutes < 0) {
-    db.runSync("UPDATE games SET steam_synced_minutes = ? WHERE id = ?", [
-      g.playtime_forever,
-      existingId,
-    ]);
-    if (lastPlayed && (!row.last_played_override || lastPlayed > row.last_played_override)) {
-      db.runSync("UPDATE games SET last_played_override = ? WHERE id = ?", [
-        lastPlayed,
-        existingId,
-      ]);
-    }
-    if (lastPlayed) ensureMarkerSession(existingId, lastPlayed, STEAM_MARKER_NOTE);
-    return { status: "merged", detail: "baseline set — new playtime tracked from now" };
+  // playtime_minutes NULL = never synced under the per-appid model (a
+  // multi-appid game or a pre-v9 unknown baseline): record it, don't compare.
+  const link = db.getFirstSync<{ playtime_minutes: number | null }>(
+    "SELECT playtime_minutes FROM game_external_ids WHERE source = 'steam' AND external_id = ?",
+    [appid]
+  );
+  const prev = link?.playtime_minutes ?? null;
+  const delta = prev == null ? 0 : g.playtime_forever - prev;
+  if (prev == null || delta !== 0) {
+    db.runSync(
+      "UPDATE game_external_ids SET playtime_minutes = ? WHERE source = 'steam' AND external_id = ?",
+      [g.playtime_forever, appid]
+    );
   }
 
-  // Delta is measured against the last total we saw from Steam (the watermark),
-  // so we only ever count *new* playtime once.
-  const delta = g.playtime_forever - row.steam_synced_minutes;
-  const details: string[] = [];
-  if (delta !== 0) {
-    if (delta > 0 && lastPlayed) {
-      // New playtime with a known date → log it as a real dated session
-      // (accumulates onto that day, so repeated same-day syncs stay correct).
-      accumulateSession(existingId, lastPlayed, delta, STEAM_MARKER_NOTE);
-    } else {
-      // No date to attribute to (or a negative correction) → fold into the
-      // undated import lump instead, clamped at zero.
-      db.runSync("UPDATE games SET imported_minutes = ? WHERE id = ?", [
-        Math.max(0, row.imported_minutes + delta),
-        existingId,
-      ]);
-    }
-    db.runSync("UPDATE games SET steam_synced_minutes = ? WHERE id = ?", [
-      g.playtime_forever,
-      existingId,
-    ]);
-    details.push((delta > 0 ? "+" : "-") + fmtMinutes(Math.abs(delta)));
-  }
-  if (lastPlayed && (!row.last_played_override || lastPlayed > row.last_played_override)) {
+  const row = db.getFirstSync<{ last_played_override: string | null }>(
+    "SELECT last_played_override FROM games WHERE id = ?",
+    [gameId]
+  );
+  if (lastPlayed && (!row?.last_played_override || lastPlayed > row.last_played_override)) {
     db.runSync("UPDATE games SET last_played_override = ? WHERE id = ?", [
       lastPlayed,
-      existingId,
+      gameId,
     ]);
   }
-  // Ensure the game surfaces on its last-played day even when nothing changed
-  // (a positive delta already created/updated that day's session above).
-  if (lastPlayed && !(delta > 0))
-    ensureMarkerSession(existingId, lastPlayed, STEAM_MARKER_NOTE);
+  // Surface the game on its last-played day without adding any minutes.
+  if (lastPlayed) ensureMarkerSession(gameId, lastPlayed, STEAM_MARKER_NOTE);
 
-  if (details.length === 0)
-    return { status: "duplicate", detail: "already up to date" };
-  return { status: "merged", detail: details.join(" ") };
+  if (prev == null) return { status: "merged", detail: "synced" };
+  if (delta !== 0)
+    return {
+      status: "merged",
+      detail: (delta > 0 ? "+" : "-") + fmtMinutes(Math.abs(delta)),
+    };
+  return { status: "duplicate", detail: "already up to date" };
 }
 
-/** The linked Steam appid for a game, or null if it isn't a Steam entry. */
-export function steamAppidFor(gameId: number): string | null {
-  return (
-    db.getFirstSync<{ external_id: string }>(
-      "SELECT external_id FROM game_external_ids WHERE source = 'steam' AND game_id = ? LIMIT 1",
+/** Every Steam appid linked to a game, oldest link first. */
+export function steamAppidsFor(gameId: number): string[] {
+  return db
+    .getAllSync<{ external_id: string }>(
+      "SELECT external_id FROM game_external_ids WHERE source = 'steam' AND game_id = ? ORDER BY id",
       [gameId]
-    )?.external_id ?? null
-  );
+    )
+    .map((r) => r.external_id);
+}
+
+/** The first linked Steam appid for a game, or null if it isn't a Steam entry. */
+export function steamAppidFor(gameId: number): string | null {
+  return steamAppidsFor(gameId)[0] ?? null;
 }
 
 /**
- * Re-sync a single already-linked Steam game's playtime + last-played date
- * (and stamp a marker session on its last-played day). Reuses the same
- * refresh logic as the bulk "Re-sync playtime" import. Returns a short
- * human-readable summary, or throws with a clear message.
+ * Re-sync a single game's Steam playtime + last-played date across *all* of
+ * its linked appids (a merged original + remaster keeps one row each), and
+ * stamp a marker session on each last-played day. Reuses the same refresh
+ * logic as the bulk "Re-sync playtime" import. Returns a short human-readable
+ * summary, or throws with a clear message.
  */
 export async function syncSteamGame(gameId: number): Promise<string> {
-  const appid = steamAppidFor(gameId);
-  if (!appid) throw new Error("This game isn't linked to Steam.");
+  const appids = steamAppidsFor(gameId);
+  if (appids.length === 0) throw new Error("This game isn't linked to Steam.");
   const games = await fetchSteamLibrary();
-  const g = games.find((x) => String(x.appid) === appid);
-  if (!g)
+  const results: RowResult[] = [];
+  for (const appid of appids) {
+    const g = games.find((x) => String(x.appid) === appid);
+    if (g) results.push(resyncLinked(g, gameId));
+  }
+  if (results.length === 0)
     throw new Error(
-      `Steam no longer lists this game in your library (appid ${appid}).`
+      `Steam no longer lists this game in your library (appid ${appids.join(", ")}).`
     );
-  const r = resyncLinked(g, gameId);
-  if (r.status === "duplicate") return "Already up to date with Steam.";
-  return `Playtime updated (${r.detail}).`;
+  const changed = results.filter((r) => r.status !== "duplicate");
+  if (changed.length === 0) return "Already up to date with Steam.";
+  return `Playtime updated (${changed.map((r) => r.detail).join(", ")}).`;
 }
 
 /** Fetch the library and queue a non-blocking import. */

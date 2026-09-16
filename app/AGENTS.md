@@ -83,6 +83,15 @@ Any new importer (GOG, eShop, etc.) must:
 Run `npx tsc --noEmit` from the `app/` directory before committing. A passing build is
 the minimum bar.
 
+### 6. Storefront playtime is a separate source; totals are `max(storefront, own)`
+A storefront's lifetime total per external id lives on
+`game_external_ids.playtime_minutes` (NULL = never synced). It is **never** merged into
+`imported_minutes` and never written to `sessions`. A game's playtime is
+`max(sum of its storefront totals, imported_minutes + logged sessions)` — both measure the
+same play, so the larger number is the truer one. Sync refreshes the per-appid total, the
+last-played date and a 0-minute marker session; it never attributes minutes to a day.
+`games.steam_synced_minutes` (v6/v7 watermark) is dead schema — do not read or write it.
+
 ---
 
 ## Key patterns
@@ -115,8 +124,9 @@ removeTag(gameId, "genre:rpg");
 ### Linking an external ID (required for all storefront imports)
 ```ts
 db.runSync(
-  "INSERT OR IGNORE INTO game_external_ids (game_id, source, external_id) VALUES (?, ?, ?)",
-  [gameId, "steam", String(appid)]
+  `INSERT OR IGNORE INTO game_external_ids (game_id, source, external_id, playtime_minutes)
+   VALUES (?, ?, ?, ?)`,
+  [gameId, "steam", String(appid), playtimeMinutes] // NULL if the store has no total
 );
 ```
 
@@ -125,8 +135,8 @@ db.runSync(
 import { allGames } from "../db/repo";
 const games: GameWithMeta[] = allGames(); // call on useFocusEffect
 ```
-`GameWithMeta` extends `Game` with `tags`, `totalMinutes`, `lastPlayed`, `progress`,
-`group`, `streak`.
+`GameWithMeta` extends `Game` with `tags`, `steamMinutes`, `loggedMinutes`, `totalMinutes`,
+`lastPlayed`, `progress`, `group`, `streak`.
 
 ### Adding a new screen
 1. Create `src/screens/MyScreen.tsx`.
@@ -162,9 +172,11 @@ Tags with that prefix will automatically render in that colour via `Tag` in `ui.
 5. Process each game row:
    - Check `linked` → duplicate
    - Check `byNorm` via `normalizeTitle(name)`, then `findFuzzyMatch(norm, byNorm)` → merge
-     (add external id, tags, note; fill playtime only if `isNeverPlayed()`; mark fuzzy
-     merges with a `≈` detail prefix + mention the match in the audit note)
-   - Otherwise → `addGame()` + insert external id + update both Maps
+     (add external id, tags, note; mark fuzzy merges with a `≈` detail prefix + mention the
+     match in the audit note)
+   - Otherwise → `addGame({ …, imported_minutes: 0 })` + insert external id + update both Maps
+   - The storefront's playtime always goes on `game_external_ids.playtime_minutes` (see
+     invariant 6) — never into `imported_minutes`, never into a session
 6. Call `startImport(label, names, processRow)` — the queue handles chunking + UI.
 7. Add credentials to `SETTINGS` + a section in `SettingsScreen.tsx`.
 

@@ -215,28 +215,6 @@ export function logSession(
 }
 
 /**
- * Add `minutes` to a day's session (creating it if absent), *accumulating*
- * rather than overwriting. Used by Steam sync to attribute a playtime delta to
- * its last-played date — repeated same-day syncs keep adding only the new
- * delta, and any minutes already logged for that day are preserved.
- */
-export function accumulateSession(
-  gameId: number,
-  date: string,
-  minutes: number,
-  note?: string | null
-) {
-  db.runSync(
-    `INSERT INTO sessions (game_id, date, minutes, note) VALUES (?, ?, ?, ?)
-     ON CONFLICT(game_id, date) DO UPDATE SET
-       minutes = sessions.minutes + excluded.minutes,
-       note = COALESCE(sessions.note, excluded.note)`,
-    [gameId, date, minutes, note ?? null]
-  );
-  clearShelvedIfPlayed(gameId, date);
-}
-
-/**
  * Insert a zero-minute marker session, but only if the day has no session yet.
  * Used by Steam sync to surface a game on its "last played" date without
  * adding playtime or clobbering a real logged session. Idempotent across
@@ -325,9 +303,10 @@ export function startedCompletedInRange(
 }
 
 /**
- * true if this game hasn't meaningfully been played yet: total time (sessions +
- * imported) is at or below the played threshold (default 29 min — a quick
- * boot-up doesn't count as playing).
+ * true if this game hasn't meaningfully been played yet: total time is at or
+ * below the played threshold (default 29 min — a quick boot-up doesn't count as
+ * playing). Uses the same definition as `totalMinutes`:
+ * max(Steam total, imported + sessions).
  */
 export function isNeverPlayed(gameId: number): boolean {
   const g = db.getFirstSync<{ imported_minutes: number }>(
@@ -338,7 +317,15 @@ export function isNeverPlayed(gameId: number): boolean {
     "SELECT COALESCE(SUM(minutes), 0) total FROM sessions WHERE game_id = ?",
     [gameId]
   );
-  const total = (g?.imported_minutes ?? 0) + (s?.total ?? 0);
+  const steam = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(playtime_minutes), 0) total FROM game_external_ids
+      WHERE source = 'steam' AND playtime_minutes IS NOT NULL AND game_id = ?`,
+    [gameId]
+  );
+  const total = Math.max(
+    steam?.total ?? 0,
+    (g?.imported_minutes ?? 0) + (s?.total ?? 0)
+  );
   return total <= windowConfig().playedThreshold;
 }
 
@@ -417,8 +404,9 @@ export function allGames(): GameWithMeta[] {
 }
 
 /**
- * Batch-enrich: tags, session aggregates, milestones and derived state for
- * all given games using a fixed number of queries (3) instead of ~5 per game.
+ * Batch-enrich: tags, session aggregates, storefront playtime, milestones and
+ * derived state for all given games using a fixed number of queries (4)
+ * instead of ~5 per game.
  */
 function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
   if (games.length === 0) return [];
@@ -426,6 +414,8 @@ function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
   const grace = streakGrace();
   const today = playDay();
   const where = onlyId != null ? "WHERE game_id = ?" : "";
+  // Same filter for queries that already carry a WHERE clause of their own.
+  const andWhere = onlyId != null ? "AND game_id = ?" : "";
   const params = onlyId != null ? [onlyId] : [];
 
   const tagsBy = new Map<number, string[]>();
@@ -452,6 +442,19 @@ function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
     s.total += r.minutes;
   }
 
+  // Storefront playtime: Steam's lifetime total per linked appid, summed per
+  // game. Rows never synced under the per-appid model are NULL and excluded, so
+  // a game with no synced link row has no Steam figure at all (null, not 0).
+  const steamBy = new Map<number, number>();
+  for (const r of db.getAllSync<{ game_id: number; steam: number }>(
+    `SELECT game_id, SUM(playtime_minutes) AS steam FROM game_external_ids
+      WHERE source = 'steam' AND playtime_minutes IS NOT NULL ${andWhere}
+      GROUP BY game_id`,
+    params
+  )) {
+    steamBy.set(r.game_id, r.steam);
+  }
+
   const msBy = new Map<number, Milestone[]>();
   for (const m of db.getAllSync<Milestone>(
     `SELECT * FROM milestones ${where} ORDER BY sort, id`,
@@ -475,11 +478,20 @@ function enrichAll(games: Game[], onlyId?: number): GameWithMeta[] {
         : lastSession ?? g.last_played_override;
     const milestones = msBy.get(g.id) ?? [];
     const progress = progressPercent(g, milestones);
-    const totalMinutes = sessionMinutes + g.imported_minutes;
+    // Steam's total and the user's own records measure the same play side by
+    // side (sync never writes minutes into sessions), so the larger of the two
+    // is the truer lifetime figure.
+    const steamMinutes = steamBy.get(g.id) ?? null;
+    const totalMinutes = Math.max(
+      steamMinutes ?? 0,
+      g.imported_minutes + sessionMinutes
+    );
     const group = deriveGroup(g, lastPlayed, totalMinutes, progress, cfg, today);
     return {
       ...g,
       tags: tagsBy.get(g.id) ?? [],
+      steamMinutes,
+      loggedMinutes: sessionMinutes,
       totalMinutes,
       sessionCount,
       lastPlayed,

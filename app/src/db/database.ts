@@ -151,6 +151,35 @@ const MIGRATIONS: string[][] = [
   [
     `ALTER TABLE games ADD COLUMN shelved_at TEXT`,
   ],
+  // v9 — Steam playtime becomes its own source, stored per appid.
+  // `game_external_ids.playtime_minutes` = the storefront's lifetime total for
+  // that external id as of the last sync; NULL = never synced under this model.
+  // A game's playtime is now max(sum of its storefront totals, imported_minutes
+  // + logged sessions): the two measure the same play, so the larger number is
+  // the truer one. Sync no longer writes deltas into sessions, so the per-game
+  // watermark (`games.steam_synced_minutes`, v6/v7) is dead — it stays in the
+  // schema because migrations are append-only, but nothing reads or writes it.
+  //
+  // Seeding: for a single-appid game the old watermark *is* the last Steam total
+  // seen (it was set at import and on every re-sync), so copy it onto the link
+  // row. Multi-appid games (the watermark was overwritten by whichever listing
+  // synced last, so it is not a per-appid total) and the v7 `-1` "baseline
+  // unknown" sentinels stay NULL and are filled by the next sync.
+  //
+  // No displayed total changes at migration time: for a single-appid game the
+  // invariant `imported_minutes + sessions >= watermark` always held (the lump
+  // was Steam's total at import and every attributed delta went into a session
+  // or back into the lump), so max(watermark, imported + sessions) equals the
+  // old imported + sessions. Games seeded NULL keep imported + sessions too.
+  [
+    `ALTER TABLE game_external_ids ADD COLUMN playtime_minutes INTEGER`,
+    `UPDATE game_external_ids
+        SET playtime_minutes = (SELECT steam_synced_minutes FROM games WHERE games.id = game_external_ids.game_id)
+      WHERE source = 'steam'
+        AND (SELECT steam_synced_minutes FROM games WHERE games.id = game_external_ids.game_id) >= 0
+        AND game_id NOT IN (SELECT game_id FROM game_external_ids WHERE source = 'steam'
+                            GROUP BY game_id HAVING COUNT(*) > 1)`,
+  ],
 ];
 
 export function migrate() {

@@ -51,7 +51,6 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - **Tap any day** → selected-day panel: shows minutes + note with **✎ Edit** and **🗑 Delete** buttons; empty days show **+ Add session**
 - **List view**: tap a row to edit, long-press to delete
 - Editing opens the same Session Log modal pre-filled with the day's existing data; saving upserts (add or replace)
-- **Steam dump cleanup**: deleting or shrinking a Steam-attributed session (note contains "Last played on Steam") prompts **Keep time** (moves removed minutes into undated base playtime — lifetime total stays accurate) or **Discard time** (permanent). "Keep time" is the default. The sync watermark is independent of local sessions, so discarded time is never re-added on the next sync — but a 0-minute marker for that date may reappear if Steam still reports it as the last-played day
 
 ### Stats
 - Playtime totals: week / month / year / all-time
@@ -68,9 +67,9 @@ Built with **React Native + Expo**, targeting iOS and Android.
 
 #### Steam library (Settings → Steam library)
 - Fetches owned games via the Steam Web API (requires Web API key + SteamID64; profile "Game details" must be Public)
-- **Merge policy:** games matching an existing entry by normalized title are *merged* into it rather than duplicated — enriched with `source:steam` + `platform:steam` tags, a Steam appid link, and playtime (only if the existing entry has no tracked time, to avoid double-counting). Normalizing folds accents (`Pokémon` = `Pokemon`, `Ōkami` = `Okami`) and drops bundle/SKU-tier suffixes (`Game of the Year`, `GOTY`, and `Complete` / `Deluxe` / `Ultimate` / `Premium` / `Gold` / `Legacy` / `Collector's` / `Standard` when followed by `Edition`), but **keeps re-release markers** (`HD`, `Remastered`, `Remaster`, `Remake`, `Definitive`, `Enhanced`, `Anniversary`, `Director's Cut`, `Special Edition`) — a remaster is a different build you may play again, so it stays a separate entry with its own hours instead of merging into the original
-- **Playtime as dated sessions:** on re-sync, any *new* playtime since the last sync is logged as a real session on Steam's "last played" date — so playing a game and then syncing shows those hours on your calendar/stats for that day (counted exactly once via a per-game watermark, so repeated syncs never double up). When there's no new time, a 0-minute marker session still surfaces the game on its last-played day without touching playtime or overwriting a manually logged session
-- **Per-game sync:** a Steam-linked game's detail screen has a **Sync playtime from Steam** button to refresh just that game's playtime + last-played date on demand (no full library re-import needed)
+- **Merge policy:** games matching an existing entry by normalized title are *merged* into it rather than duplicated — enriched with `source:steam` + `platform:steam` tags and a Steam appid link. Steam's playtime is stored on that link, not folded into the entry's own time, so a merge never disturbs what you already tracked. Normalizing folds accents (`Pokémon` = `Pokemon`, `Ōkami` = `Okami`) and drops bundle/SKU-tier suffixes (`Game of the Year`, `GOTY`, and `Complete` / `Deluxe` / `Ultimate` / `Premium` / `Gold` / `Legacy` / `Collector's` / `Standard` when followed by `Edition`), but **keeps re-release markers** (`HD`, `Remastered`, `Remaster`, `Remake`, `Definitive`, `Enhanced`, `Anniversary`, `Director's Cut`, `Special Edition`) — a remaster is a different build you may play again, so it stays a separate entry with its own hours instead of merging into the original
+- **Playtime is its own source:** Steam's lifetime total is kept per appid alongside your own records and is never turned into sessions. A game's playtime is `max(Steam total across its linked appids, base playtime + logged sessions)` — both measure the same play, so the larger number wins. A sync only refreshes those totals, the last-played date and a 0-minute marker session that surfaces the game on its last-played day; it never adds minutes to your calendar and never double-counts, however often you re-sync
+- **Per-game sync:** a Steam-linked game's detail screen has a **Sync playtime from Steam** button to refresh that game's playtime + last-played date on demand, across every appid linked to it (a merged original + remaster keeps one total each). Rows show `+2h` / `-15m` when Steam's total moved, `synced` the first time a total is recorded, `already up to date` otherwise
 - Zero-playtime games get an additional `status:unplayed` tag
 - Fully idempotent — already-linked games are skipped on re-import; new purchases are picked up automatically
 - Runs **non-blocking** (chunked, yields to UI between batches); progress visible on a temporary 📥 Import tab that vanishes when done
@@ -163,7 +162,7 @@ All importers (CSV, Steam, future GOG/eShop) use the same pipeline:
 2. **Normalize** — `normalizeTitle()` strips trademarks, edition suffixes, roman numerals; used for cross-source dedup
 3. **Dedup tiers**
    - Tier 1: `game_external_ids` lookup by stable ID (instant, idempotent)
-   - Tier 2: normalized-title match → **merge** (adds tags + note, fills playtime only if zero)
+   - Tier 2: normalized-title match → **merge** (adds tags + note; storefront playtime stays on the external-id link)
    - Tier 3: fuzzy title match (subtitle-drop + typo tolerance, numeric-token guarded) / IGDB canonical ID match on manual adds
 4. **Queue** — `startImport()` in `importQueue.ts` runs rows in chunks of 15, yielding to the UI between batches via `setTimeout(0)`
 5. **UI** — `ImportScreen` subscribes to the queue store via `useImportState()` (`useSyncExternalStore`); the tab is conditionally rendered in `App.tsx` and auto-dismisses after 6 seconds

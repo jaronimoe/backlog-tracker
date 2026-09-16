@@ -61,6 +61,14 @@ export type StateGroup =
 
 export interface GameWithMeta extends Game {
   tags: string[];
+  /**
+   * Storefront lifetime total (sum over the game's synced Steam link rows),
+   * or null when no linked appid has been synced under the per-appid model.
+   */
+  steamMinutes: number | null;
+  /** Minutes from logged sessions only (own records, excludes the base lump). */
+  loggedMinutes: number;
+  /** max(steamMinutes ?? 0, imported_minutes + loggedMinutes). */
   totalMinutes: number;
   sessionCount: number;
   lastPlayed: string | null; // ISO date
