@@ -57,6 +57,7 @@ import {
   syncSteamGame,
 } from "../services/steam";
 import { MonthGrid } from "../components/MonthGrid";
+import { WalkthroughReader } from "../components/WalkthroughReader";
 import { igdbConfigured, IgdbGame, searchIgdb } from "../services/igdb";
 import {
   GameWithMeta,
@@ -1264,7 +1265,6 @@ function CoverPickerModal({
   );
 }
 
-/** Paragraph-based reader: tap a paragraph to mark "I stopped here". */
 function RecapModal({
   visible,
   busy,
@@ -1312,68 +1312,5 @@ function RecapModal({
         </Pressable>
       </Pressable>
     </Modal>
-  );
-}
-
-function WalkthroughReader({
-  text,
-  position,
-  onMark,
-  onEdit,
-}: {
-  text: string;
-  position: number;
-  onMark: (pos: number) => void;
-  onEdit: () => void;
-}) {
-  const paragraphs: { start: number; end: number; body: string }[] = [];
-  let offset = 0;
-  for (const p of text.split(/\n\n+/)) {
-    const start = text.indexOf(p, offset);
-    paragraphs.push({ start, end: start + p.length, body: p });
-    offset = start + p.length;
-  }
-  return (
-    <View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-        <Text style={{ color: C.textMuted, fontSize: 11 }}>
-          Tap a paragraph to mark your position
-        </Text>
-        <Pressable onPress={onEdit}>
-          <Text style={{ color: C.accent, fontSize: 11 }}>Edit text</Text>
-        </Pressable>
-      </View>
-      {paragraphs.map((p, i) => {
-        const done = p.end <= position;
-        const isMark = position >= p.start && position <= p.end && position > 0;
-        return (
-          <Pressable
-            key={i}
-            onPress={() => onMark(p.end)}
-            style={{
-              padding: 10,
-              borderRadius: 6,
-              marginBottom: 4,
-              backgroundColor: isMark ? C.bgCard : "transparent",
-              borderLeftWidth: 3,
-              borderLeftColor: done ? C.progressFill : C.border,
-            }}
-          >
-            <Text style={{
-              color: done ? C.textMuted : C.textPrimary,
-              fontSize: 12,
-              lineHeight: 18,
-            }}>
-              {p.body}
-            </Text>
-            {isMark && (
-              <Text style={{ color: C.progressFill, fontSize: 10, marginTop: 4 }}>
-                📍 You stopped here
-              </Text>
-            )}
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }
