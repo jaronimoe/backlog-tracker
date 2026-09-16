@@ -193,6 +193,18 @@ Tags with that prefix will automatically render in that colour via `Tag` in `ui.
   (timezone issues on device).
 - `normalizeTitle()` strips roman numerals II–XIII and V, but intentionally skips I and X
   (`Mega Man X` ≠ `Mega Man 10`). Do not add I or X to the ROMAN map.
+- `normalizeTitle()` folds diacritics (`NFD` + strip combining marks, with a small replacement
+  map as a fallback when the engine has no working `String.prototype.normalize`), so
+  `Pokémon` = `Pokemon` and `Ōkami` = `Okami`. Nothing is migrated: normalized titles are never
+  stored, every importer rebuilds its lookup Map from raw titles.
+- `normalizeTitle()` strips only **bundle / SKU-tier** suffixes — `game of the year` / `goty`
+  (bare or with `edition`), and `complete | deluxe | ultimate | premium | gold | legacy |
+  collector's | standard` *only* when followed by `edition` (so `Pokémon Gold` keeps its word).
+  **Re-release markers are never stripped**: `remastered`, `remaster`, `remake`, `hd`,
+  `definitive`, `enhanced`, `anniversary`, `director's cut` and `special edition` stay in the
+  normalized title, so `Ōkami HD` (`okami hd`) is a separate game from `Okami` and keeps its own
+  playtime. Hours in a remaster are not summed with the original — do not add those markers to
+  `EDITION_SUFFIX`.
 - The `sessions` table uses `ON CONFLICT ... DO UPDATE` upsert. A second log call on the
   same day *replaces* minutes (it doesn't add). This is intentional — the session modal
   always shows the total for the day, not an increment.

@@ -68,7 +68,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 
 #### Steam library (Settings → Steam library)
 - Fetches owned games via the Steam Web API (requires Web API key + SteamID64; profile "Game details" must be Public)
-- **Merge policy:** games matching an existing entry by normalized title are *merged* into it rather than duplicated — enriched with `source:steam` + `platform:steam` tags, a Steam appid link, and playtime (only if the existing entry has no tracked time, to avoid double-counting)
+- **Merge policy:** games matching an existing entry by normalized title are *merged* into it rather than duplicated — enriched with `source:steam` + `platform:steam` tags, a Steam appid link, and playtime (only if the existing entry has no tracked time, to avoid double-counting). Normalizing folds accents (`Pokémon` = `Pokemon`, `Ōkami` = `Okami`) and drops bundle/SKU-tier suffixes (`Game of the Year`, `GOTY`, and `Complete` / `Deluxe` / `Ultimate` / `Premium` / `Gold` / `Legacy` / `Collector's` / `Standard` when followed by `Edition`), but **keeps re-release markers** (`HD`, `Remastered`, `Remaster`, `Remake`, `Definitive`, `Enhanced`, `Anniversary`, `Director's Cut`, `Special Edition`) — a remaster is a different build you may play again, so it stays a separate entry with its own hours instead of merging into the original
 - **Playtime as dated sessions:** on re-sync, any *new* playtime since the last sync is logged as a real session on Steam's "last played" date — so playing a game and then syncing shows those hours on your calendar/stats for that day (counted exactly once via a per-game watermark, so repeated syncs never double up). When there's no new time, a 0-minute marker session still surfaces the game on its last-played day without touching playtime or overwriting a manually logged session
 - **Per-game sync:** a Steam-linked game's detail screen has a **Sync playtime from Steam** button to refresh just that game's playtime + last-played date on demand (no full library re-import needed)
 - Zero-playtime games get an additional `status:unplayed` tag
@@ -80,7 +80,7 @@ Built with **React Native + Expo**, targeting iOS and Android.
 - Status values: `completed`, `in_progress`, `halted`, `abandoned`, `backlog`, `maybe`
 - Quoted fields (commas in notes/titles) handled correctly
 - Fuzzy hours (`20?`, `21.5`) parsed correctly
-- Dedup via **normalized titles** (strips ®™©, edition suffixes, converts roman numerals) plus a conservative **fuzzy tier** — safe to re-run
+- Dedup via **normalized titles** (strips ®™©, folds accents, strips bundle/SKU-tier edition suffixes but keeps re-release markers — see the Steam merge policy above — converts roman numerals) plus a conservative **fuzzy tier** — safe to re-run
 - Same live Import tab as Steam
 
 #### JSON backup (Settings → Backup & Sync)
