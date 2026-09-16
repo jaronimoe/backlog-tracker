@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { C, themedStyles } from "../theme";
+import { C, themedStyles, withAlpha } from "../theme";
 import { GameRow, Input, SectionHeader } from "../components/ui";
 import { SessionLogModal } from "../components/SessionLogModal";
 import { SwipeableRow } from "../components/SwipeableRow";
@@ -257,7 +257,7 @@ export default function GamesScreen({ navigation }: any) {
           }}
           onPress={() => navigation.navigate("AddGame")}
         >
-          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>
+          <Text style={{ color: C.textOnAccent, fontSize: 13, fontWeight: "600" }}>
             + Add Game
           </Text>
         </Pressable>
@@ -444,7 +444,7 @@ export function FilterChip({
         backgroundColor: active ? C.accent : C.bgCard,
       }}
     >
-      <Text style={{ color: active ? "#fff" : C.textSecondary, fontSize: 12 }}>
+      <Text style={{ color: active ? C.textOnAccent : C.textSecondary, fontSize: 12 }}>
         {label}
       </Text>
     </Pressable>
@@ -497,7 +497,7 @@ const t = themedStyles(() => ({
     borderRadius: 12,
     padding: 14,
     marginBottom: 16,
-    backgroundColor: "rgba(233,69,96,0.03)",
+    backgroundColor: withAlpha(C.accent, 0.03),
   },
   dropTitle: {
     color: C.accent,

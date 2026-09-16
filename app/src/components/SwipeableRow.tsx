@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { Animated, PanResponder, StyleSheet, View } from "react-native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 
 const REVEAL = 120; // max drag distance (px)
 const TRIGGER = 72; // releasing beyond this fires the action
@@ -71,12 +71,14 @@ export function SwipeableRow({
   );
 }
 
-const sw = StyleSheet.create({
-  action: {
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "flex-end",
-    paddingRight: 18,
-  },
-  actionText: { color: "#fff", fontSize: 13, fontWeight: "600" },
-});
+const sw = themedStyles(() =>
+  StyleSheet.create({
+    action: {
+      borderRadius: 8,
+      justifyContent: "center",
+      alignItems: "flex-end",
+      paddingRight: 18,
+    },
+    actionText: { color: C.textOnAccent, fontSize: 13, fontWeight: "600" },
+  })
+);

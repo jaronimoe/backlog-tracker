@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
-import { C, themedStyles } from "../theme";
+import { C, themedStyles, withAlpha } from "../theme";
 import { fmtMinutes, playDay } from "../logic/derive";
 import type { DayEvent } from "../services/deviceCalendar";
 
@@ -61,7 +61,7 @@ export function MonthGrid({
               {
                 backgroundColor:
                   intensity > 0
-                    ? `rgba(78,204,163,${intensity.toFixed(2)})`
+                    ? withAlpha(C.progressFill, intensity)
                     : C.bgSecondary,
                 borderWidth:
                   date === today || hasEvents ? 2 : selected === date ? 1 : 0,

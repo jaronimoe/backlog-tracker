@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Image,
   Platform,
@@ -112,6 +112,9 @@ export function Cover({
   h?: number;
 }) {
   const [failed, setFailed] = useState(false);
+  // A new URL deserves a fresh attempt — otherwise fixing a 404 cover still
+  // shows initials until the row unmounts.
+  useEffect(() => setFailed(false), [game.cover_url]);
   const initials = game.title
     .split(" ")
     .map((x) => x[0])
@@ -241,7 +244,9 @@ export function Btn({
       style={[kind === "primary" ? s.btnPrimary : s.btnSecondary, style]}
       onPress={onPress}
     >
-      <Text style={s.btnText}>{label}</Text>
+      <Text style={kind === "primary" ? s.btnTextPrimary : s.btnTextSecondary}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -418,7 +423,8 @@ export const s = themedStyles(() =>
     borderRadius: 6,
     alignItems: "center",
   },
-  btnText: { color: "#fff", fontSize: 14, fontWeight: "500" },
+  btnTextPrimary: { color: C.textOnAccent, fontSize: 14, fontWeight: "500" },
+  btnTextSecondary: { color: C.textPrimary, fontSize: 14, fontWeight: "500" },
   fieldLabel: { color: C.textMuted, fontSize: 12, marginBottom: 6 },
   input: {
     backgroundColor: C.bgCard,

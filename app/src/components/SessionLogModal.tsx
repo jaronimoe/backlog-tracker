@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { C } from "../theme";
+import { C, themedStyles } from "../theme";
 import { Btn, Field, Input, ProgressBar, s } from "./ui";
 import {
   genreBlockCheck,
@@ -152,7 +152,7 @@ export function SessionLogModal({
                   style={[m.timeBtn, { backgroundColor: C.accent }]}
                   onPress={() => setMinutes((v) => v + 15)}
                 >
-                  <Text style={m.timeBtnText}>+</Text>
+                  <Text style={m.timeBtnTextOnAccent}>+</Text>
                 </Pressable>
               </View>
               <View
@@ -207,7 +207,7 @@ export function promptCompletion(gameId: number) {
     Alert.alert("🎉 Completed!", "Game marked as completed.", [{ text: "OK" }]);
 }
 
-export const m = {
+export const m = themedStyles(() => ({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
@@ -244,7 +244,9 @@ export const m = {
     alignItems: "center" as const,
     justifyContent: "center" as const,
   },
-  timeBtnText: { color: "#fff", fontSize: 22 },
+  // "−" sits on bgCard, "+" on an inline accent background.
+  timeBtnText: { color: C.textPrimary, fontSize: 22 },
+  timeBtnTextOnAccent: { color: C.textOnAccent, fontSize: 22 },
   timeDisplay: {
     color: C.progressFill,
     fontSize: 26,
@@ -265,4 +267,4 @@ export const m = {
   },
   blockTitle: { color: C.textPrimary, fontSize: 13, flex: 1 },
   blockMeta: { color: C.textMuted, fontSize: 10 },
-};
+}));

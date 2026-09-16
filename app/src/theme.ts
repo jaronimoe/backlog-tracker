@@ -12,6 +12,8 @@ export type ThemeColors = {
   textPrimary: string;
   textSecondary: string;
   textMuted: string;
+  /** Text/icon color drawn on top of an `accent` background. */
+  textOnAccent: string;
   progressBg: string;
   progressFill: string;
   border: string;
@@ -48,6 +50,7 @@ export const THEMES: Record<string, Theme> = {
       textPrimary: "#eaeaea",
       textSecondary: "#a0a0b0",
       textMuted: "#6a6a7a",
+      textOnAccent: "#ffffff",
       progressBg: "#2a2a4a",
       progressFill: "#4ecca3",
       border: "#2a2a4a",
@@ -75,6 +78,7 @@ export const THEMES: Record<string, Theme> = {
       textPrimary: "#3a352d",
       textSecondary: "#6b6357",
       textMuted: "#94897a",
+      textOnAccent: "#ffffff",
       progressBg: "#c9bfae",
       progressFill: "#6e8b5e",
       border: "#cfc5b4",
@@ -102,6 +106,7 @@ export const THEMES: Record<string, Theme> = {
       textPrimary: "#f3eaff",
       textSecondary: "#c0aee0",
       textMuted: "#8a76b0",
+      textOnAccent: "#ffffff",
       progressBg: "#332255",
       progressFill: "#00e5c0",
       border: "#443366",
@@ -228,6 +233,33 @@ export function useTheme() {
     };
   }, []);
   return { name: currentName, version: v };
+}
+
+/**
+ * Translucent version of a theme color: `withAlpha(C.accent, 0.03)`.
+ * Accepts the hex forms the customise screen allows (#rgb, #rgba, #rrggbb,
+ * #rrggbbaa); any alpha already in the hex is replaced by `alpha`. Anything
+ * unparsable is returned unchanged so a bad override degrades to a solid color.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const h = hex.trim();
+  const m = /^#([0-9a-fA-F]{3,8})$/.exec(h);
+  if (!m) return hex;
+  const d = m[1];
+  let r: string, g: string, b: string;
+  if (d.length === 3 || d.length === 4) {
+    r = d[0] + d[0];
+    g = d[1] + d[1];
+    b = d[2] + d[2];
+  } else if (d.length === 6 || d.length === 8) {
+    r = d.slice(0, 2);
+    g = d.slice(2, 4);
+    b = d.slice(4, 6);
+  } else {
+    return hex;
+  }
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 1000) / 1000;
+  return `rgba(${parseInt(r, 16)},${parseInt(g, 16)},${parseInt(b, 16)},${a})`;
 }
 
 /**

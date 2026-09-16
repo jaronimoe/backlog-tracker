@@ -384,7 +384,7 @@ export default function GameDetailScreen({ route, navigation }: any) {
                   backgroundColor: game.progress_method === m ? C.accent : C.bgCard,
                 }}
               >
-                <Text style={{ color: game.progress_method === m ? "#fff" : C.textSecondary, fontSize: 12 }}>
+                <Text style={{ color: game.progress_method === m ? C.textOnAccent : C.textSecondary, fontSize: 12 }}>
                   {m === "checkbox" ? "Milestones" : m === "manual" ? "Manual %" : "Walkthrough"}
                 </Text>
               </Pressable>
@@ -797,7 +797,7 @@ function SessionsTab({
           >
             <Text
               style={{
-                color: view === v ? "#fff" : C.textSecondary,
+                color: view === v ? C.textOnAccent : C.textSecondary,
                 fontSize: 12,
               }}
             >

@@ -16,13 +16,19 @@ const STATUS_ICON: Record<QueueItem["status"], string> = {
   invalid: "⚠",
 };
 
-const STATUS_COLOR: Record<QueueItem["status"], string> = {
-  pending: C.textMuted,
-  added: C.progressFill,
-  merged: C.gold,
-  duplicate: C.textMuted,
-  invalid: C.accent,
-};
+/** Reads C when called, so a theme switch is picked up on the next render. */
+function statusColor(status: QueueItem["status"]): string {
+  switch (status) {
+    case "added":
+      return C.progressFill;
+    case "merged":
+      return C.gold;
+    case "invalid":
+      return C.accent;
+    default:
+      return C.textMuted;
+  }
+}
 
 export default function ImportScreen() {
   const st = useImportState();
@@ -72,7 +78,7 @@ export default function ImportScreen() {
               opacity: item.status === "pending" ? 0.45 : 1,
             }}
           >
-            <Text style={{ color: STATUS_COLOR[item.status], fontSize: 13, width: 20 }}>
+            <Text style={{ color: statusColor(item.status), fontSize: 13, width: 20 }}>
               {STATUS_ICON[item.status]}
             </Text>
             <Text

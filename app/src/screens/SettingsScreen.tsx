@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import {
   C,
@@ -528,6 +528,9 @@ function ColorRow({
   onCommit: (hex: string) => void;
 }) {
   const [text, setText] = useState(value);
+  // "Reset to theme defaults" changes `value` under us; follow it so the input
+  // doesn't keep showing the removed override.
+  useEffect(() => setText(value), [value]);
   const trimmed = text.trim();
   const valid = HEX_RE.test(trimmed);
   return (
