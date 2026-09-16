@@ -86,8 +86,8 @@ You are implementing plans/NN-<name>.md in the backlog-tracker repository.
 | 09 | merged | `b42e654` |
 | 01 | merged | `6cb4d98` (README merge-policy bullet hand-merged with 11) |
 | 03 | merged | `8d49840` |
-| 02 | not started | next: wave 2, second half |
-| 04, 05, 06, 07, 12 | not started | wave 3 |
+| 02 | merged | `05e62ef` |
+| 04, 05, 06, 07, 12 | not started | wave 3: 04 ‖ (05 → 06 → 07 → 12) |
 
 Every merge was type-checked on `main`. Nothing is pushed. The merged branches have been
 deleted and their worktrees removed; a resuming session creates a fresh worktree from `main`
